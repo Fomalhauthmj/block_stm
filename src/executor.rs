@@ -94,7 +94,7 @@ where
 {
     vm: V,
     txns: &'a [T],
-    view: S,
+    view: &'a S,
     mvmemory: &'a MVMemory<T::Key, T::Value>,
     scheduler: &'a Scheduler,
 }
@@ -108,7 +108,7 @@ where
     fn try_execute(&self, version: Version) -> Task {
         if let Some((txn_idx, incarnation_number)) = version {
             let txn = &self.txns[txn_idx];
-            let mut executor_view = ExecutorView::new(txn_idx, self.mvmemory, &self.view);
+            let mut executor_view = ExecutorView::new(txn_idx, self.mvmemory, self.view);
             match self.vm.execute(txn, &mut executor_view) {
                 Ok(_output) => {
                     let wrote_new_location = self.mvmemory.record(
@@ -163,7 +163,7 @@ where
     pub fn new(
         vm: V,
         txns: &'a [T],
-        view: S,
+        view: &'a S,
         mvmemory: &'a MVMemory<T::Key, T::Value>,
         scheduler: &'a Scheduler,
     ) -> Self {

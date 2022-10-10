@@ -13,7 +13,6 @@ pub struct Scheduler {
     decrease_cnt: AtomicUsize,
     num_active_tasks: AtomicUsize,
     done_marker: AtomicBool,
-    // TODO: do we need Mutex?
     txn_dependency: Vec<Mutex<Vec<TransactionIndex>>>,
     txn_status: Vec<Mutex<TransactionStatus>>,
     block_size: usize,
@@ -154,7 +153,7 @@ impl Scheduler {
     fn set_ready_status(&self, txn_idx: TransactionIndex) {
         let mut guard = self.txn_status[txn_idx].lock();
         if let TransactionStatus::Aborting(incarnation_number) = *guard {
-            // TODO log
+            // Note: this transaction status change won't be logged.
             *guard = TransactionStatus::ReadyToExecute(incarnation_number + 1);
         } else {
             unreachable!()

@@ -8,7 +8,7 @@ mod tests {
 
     #[test]
     fn correctness() {
-        let file_appender = tracing_appender::rolling::minutely("./logs", "test.log");
+        let file_appender = tracing_appender::rolling::minutely("./logs", "correctness.log");
         let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
         tracing_subscriber::fmt()
             .with_ansi(false)
@@ -17,13 +17,14 @@ mod tests {
             .event_format(format().pretty().with_source_location(true))
             .init();
         let mut loop_cnt = 0;
-        while loop_cnt < 5 {
-            let (ledger, txns) = generate_ledger_and_txns(5, 1_000_000, 1000, 1, 1000);
-            rayon_info!("Txns:{:?}", txns);
-            assert_eq!(
-                sequential_execute(txns.clone(), ledger.clone()),
-                parallel_execute(txns, ledger)
-            );
+        loop {
+            let (txns, mut sequential_ledger) =
+                generate_ledger_and_txns(5, 1_000_000, 1000, 1, 1000);
+            let mut parallel_ledger = sequential_ledger.clone();
+            sequential_execute(&txns, &mut sequential_ledger);
+            parallel_execute(&txns, &mut parallel_ledger, num_cpus::get());
+            // ensure the outcomes of parallel and sequential execute are consistent
+            assert_eq!(sequential_ledger, parallel_ledger);
             rayon_info!("correctness test passed");
             loop_cnt += 1;
             println!("have passed {} correctness tests", loop_cnt);

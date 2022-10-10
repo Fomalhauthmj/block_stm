@@ -32,6 +32,7 @@ where
     S: Storage<T = T>,
     V: VM<T = T, S = S>,
 {
+    concurrency_level: usize,
     phantom: PhantomData<(T, S, V)>,
 }
 impl<T, S, V> ParallelExecutor<T, S, V>
@@ -42,7 +43,7 @@ where
 {
     fn thread_task(
         txns: &[T],
-        view: S,
+        view: &S,
         mvmemory: &MVMemory<T::Key, T::Value>,
         scheduler: &Scheduler,
     ) {
@@ -58,20 +59,27 @@ where
     S: Storage<T = T>,
     V: VM<T = T, S = S>,
 {
+    /// create a parallel executor
+    pub fn new(concurrency_level: usize) -> Self {
+        assert!(
+            concurrency_level > 0 && concurrency_level <= num_cpus::get(),
+            "concurrency level {} should be between 1 and number of CPUs",
+            concurrency_level
+        );
+        Self {
+            concurrency_level,
+            phantom: PhantomData,
+        }
+    }
     /// parallel execute a batch of txns
-    pub fn execute_transactions(txns: Vec<T>, view: S) -> Vec<(T::Key, T::Value)> {
+    pub fn execute_transactions(&self, txns: &Vec<T>, view: &S) -> Vec<(T::Key, T::Value)> {
         let txns_num = txns.len();
         let mvmemory = MVMemory::new(txns_num);
         let scheduler = Scheduler::new(txns_num);
         RAYON_EXEC_POOL.scope(|s| {
-            for _ in 0..num_cpus::get() {
+            for _ in 0..self.concurrency_level {
                 s.spawn(|_| {
-                    ParallelExecutor::<T, S, V>::thread_task(
-                        &txns,
-                        view.clone(),
-                        &mvmemory,
-                        &scheduler,
-                    );
+                    ParallelExecutor::<T, S, V>::thread_task(txns, view, &mvmemory, &scheduler);
                 });
             }
         });

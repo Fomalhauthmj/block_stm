@@ -28,7 +28,7 @@ pub trait IsReadError {
     fn get_blocking_txn_idx(&self) -> Option<TransactionIndex>;
 }
 /// abstract execution engine
-pub trait VM {
+pub trait VM: Sync {
     /// transaction type
     type T: Transaction;
     /// execution output

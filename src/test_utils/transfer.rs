@@ -9,21 +9,24 @@ use crate::{
 };
 use rand::{distributions::Uniform, prelude::Distribution};
 use thiserror::Error;
-
+/// simple transfer transaction for test and benchmark
 #[derive(Clone, Debug)]
 pub struct TransferTransaction {
-    from: usize,
-    to: usize,
-    money: usize,
+    /// transfer money from
+    pub from: usize,
+    /// transfer money to
+    pub to: usize,
+    /// transfer money
+    pub money: usize,
 }
 impl Transaction for TransferTransaction {
     type Key = usize;
 
     type Value = usize;
 }
-
-#[derive(Clone, PartialEq, Debug)]
-pub struct Ledger(HashMap<usize, usize>);
+/// simple hashmap ledger
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct Ledger(pub HashMap<usize, usize>);
 impl Storage for Ledger {
     type T = TransferTransaction;
 
@@ -52,7 +55,7 @@ impl IsReadError for TransferError {
         None
     }
 }
-
+/// simple transfer vm
 pub struct TransferVM;
 impl VM for TransferVM {
     type T = TransferTransaction;
@@ -72,6 +75,8 @@ impl VM for TransferVM {
         txn: &Self::T,
         view: &mut ExecutorView<Self::T, Self::S>,
     ) -> Result<Self::Output, Self::Error> {
+        #[cfg(feature = "benchmark")]
+        std::thread::sleep(std::time::Duration::from_millis(1));
         let from_balance = view.read(&txn.from)?;
         if from_balance >= txn.money {
             let to_balance = view.read(&txn.to)?;
@@ -81,33 +86,31 @@ impl VM for TransferVM {
         Ok(())
     }
 }
-/// Note:
-/// Here,our purpose is ensuring the outcome of `parallel_execute` is same with outcome of `sequential_execute`.
-/// so for convenient, we update view directly,which is unfair for the benchmark performance.
-///
 /// sequential execute txns,update view directly.
-pub fn sequential_execute(txns: Vec<TransferTransaction>, mut view: Ledger) -> Ledger {
+pub fn sequential_execute(txns: &Vec<TransferTransaction>, ledger: &mut Ledger) {
     for txn in txns {
-        let from_balance = view.0.get(&txn.from).unwrap();
+        #[cfg(feature = "benchmark")]
+        std::thread::sleep(std::time::Duration::from_millis(1));
+        let from_balance = ledger.0.get(&txn.from).unwrap();
         if from_balance >= &txn.money {
-            let to_balance = *view.0.get(&txn.to).unwrap();
-            view.0.insert(txn.from, from_balance - txn.money);
-            view.0.insert(txn.to, to_balance + txn.money);
+            let to_balance = *ledger.0.get(&txn.to).unwrap();
+            ledger.0.insert(txn.from, from_balance - txn.money);
+            ledger.0.insert(txn.to, to_balance + txn.money);
         }
     }
-    view
 }
 /// parallel execute txns,apply changeset to view directly.
-pub fn parallel_execute(txns: Vec<TransferTransaction>, mut view: Ledger) -> Ledger {
-    let change_set =
-        ParallelExecutor::<TransferTransaction, Ledger, TransferVM>::execute_transactions(
-            txns,
-            view.clone(),
-        );
-    for (k, v) in change_set {
-        view.0.insert(k, v);
+pub fn parallel_execute(
+    txns: &Vec<TransferTransaction>,
+    ledger: &mut Ledger,
+    concurrency_level: usize,
+) {
+    let pe = ParallelExecutor::<TransferTransaction, Ledger, TransferVM>::new(concurrency_level);
+    let changeset = pe.execute_transactions(txns, ledger);
+    // TODO: can we use rayon par iter to optimize?
+    for (k, v) in changeset {
+        ledger.0.insert(k, v);
     }
-    view
 }
 /// generate a ledger and random txns with the given parameters
 pub fn generate_ledger_and_txns(
@@ -116,7 +119,7 @@ pub fn generate_ledger_and_txns(
     txns_num: usize,
     min_txn_money: usize,
     max_txn_money: usize,
-) -> (Ledger, Vec<TransferTransaction>) {
+) -> (Vec<TransferTransaction>, Ledger) {
     let mut ledger = Ledger(HashMap::new());
     (0..accounts_num).into_iter().for_each(|account| {
         let _ = ledger.0.insert(account, init_balance);
@@ -133,5 +136,5 @@ pub fn generate_ledger_and_txns(
             txns.push(TransferTransaction { from, to, money });
         }
     }
-    (ledger, txns)
+    (txns, ledger)
 }
