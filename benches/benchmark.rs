@@ -4,6 +4,7 @@ use block_stm::test_utils::{
     generate_ledger_and_txns, parallel_execute, sequential_execute, Ledger,
 };
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use pprof::criterion::{Output, PProfProfiler};
 
 const TXNS_NUM: usize = 1_000;
 
@@ -70,5 +71,8 @@ fn concurrency_level(c: &mut Criterion) {
     }
     group.finish();
 }
-criterion_group!(benches, conflicting_level, concurrency_level);
+criterion_group!(
+    name = benches;
+    config=Criterion::default().with_profiler(PProfProfiler::new(100,Output::Flamegraph(None)));
+    targets=conflicting_level, concurrency_level);
 criterion_main!(benches);

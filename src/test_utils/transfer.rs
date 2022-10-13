@@ -3,20 +3,20 @@ use std::collections::HashMap;
 use crate::{
     executor::ExecutorView,
     mvmemory::MVMemoryError,
-    traits::{IsReadError, Storage, Transaction, VM},
+    traits::{IsReadError, Storage, Transaction, ValueBytes, VM},
     types::TransactionIndex,
     ParallelExecutor,
 };
 use rand::{distributions::Uniform, prelude::Distribution};
 use thiserror::Error;
-/// simple transfer transaction for test and benchmark
-#[derive(Clone, Debug)]
+/// transfer transaction used for tests and benches
+#[derive(Debug)]
 pub struct TransferTransaction {
     /// transfer money from
     pub from: usize,
     /// transfer money to
     pub to: usize,
-    /// transfer money
+    /// transfer money amount
     pub money: usize,
 }
 impl Transaction for TransferTransaction {
@@ -24,7 +24,16 @@ impl Transaction for TransferTransaction {
 
     type Value = usize;
 }
-/// simple hashmap ledger
+impl ValueBytes for usize {
+    fn from_raw_bytes(bytes: Vec<u8>) -> Self {
+        let bytes: [u8; 8] = bytes.try_into().unwrap();
+        usize::from_ne_bytes(bytes)
+    }
+    fn to_raw_bytes(&self) -> Vec<u8> {
+        self.to_ne_bytes().to_vec()
+    }
+}
+/// hashmap ledger
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Ledger(pub HashMap<usize, usize>);
 impl Storage for Ledger {
@@ -55,7 +64,7 @@ impl IsReadError for TransferError {
         None
     }
 }
-/// simple transfer vm
+/// transfer vm
 pub struct TransferVM;
 impl VM for TransferVM {
     type T = TransferTransaction;
@@ -77,16 +86,16 @@ impl VM for TransferVM {
     ) -> Result<Self::Output, Self::Error> {
         #[cfg(feature = "benchmark")]
         std::thread::sleep(std::time::Duration::from_millis(1));
-        let from_balance = view.read(&txn.from)?;
+        let from_balance = *view.read(&txn.from)?;
         if from_balance >= txn.money {
-            let to_balance = view.read(&txn.to)?;
+            let to_balance = *view.read(&txn.to)?;
             view.write(txn.from, from_balance - txn.money);
             view.write(txn.to, to_balance + txn.money);
         }
         Ok(())
     }
 }
-/// sequential execute txns,update view directly.
+/// sequential execute txns,update ledger directly.
 pub fn sequential_execute(txns: &Vec<TransferTransaction>, ledger: &mut Ledger) {
     for txn in txns {
         #[cfg(feature = "benchmark")]
@@ -99,7 +108,7 @@ pub fn sequential_execute(txns: &Vec<TransferTransaction>, ledger: &mut Ledger) 
         }
     }
 }
-/// parallel execute txns,apply changeset to view directly.
+/// parallel execute txns,apply changeset to ledger directly.
 pub fn parallel_execute(
     txns: &Vec<TransferTransaction>,
     ledger: &mut Ledger,
@@ -107,12 +116,11 @@ pub fn parallel_execute(
 ) {
     let pe = ParallelExecutor::<TransferTransaction, Ledger, TransferVM>::new(concurrency_level);
     let changeset = pe.execute_transactions(txns, ledger);
-    // TODO: can we use rayon par iter to optimize?
     for (k, v) in changeset {
         ledger.0.insert(k, v);
     }
 }
-/// generate a ledger and random txns with the given parameters
+/// generate random txns and genesis ledger with the given parameters
 pub fn generate_ledger_and_txns(
     accounts_num: usize,
     init_balance: usize,

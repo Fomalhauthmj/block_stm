@@ -1,4 +1,4 @@
-/// tracing::trace! at Rayon thread
+/// convenient `tracing::trace!` macro with current rayon thread index
 #[macro_export]
 macro_rules! rayon_trace {
     ($fmt:expr) => {
@@ -17,7 +17,7 @@ macro_rules! rayon_trace {
         );
     };
 }
-/// tracing::debug! at Rayon thread
+/// convenient `tracing::debug!` macro with current rayon thread index
 #[macro_export]
 macro_rules! rayon_debug {
     ($fmt:expr) => {
@@ -36,7 +36,7 @@ macro_rules! rayon_debug {
         );
     };
 }
-/// tracing::info! at Rayon thread
+/// convenient `tracing::info!` macro with current rayon thread index
 #[macro_export]
 macro_rules! rayon_info {
     ($fmt:expr) => {
@@ -55,7 +55,7 @@ macro_rules! rayon_info {
         );
     };
 }
-/// tracing::warn! at Rayon thread
+/// convenient `tracing::warn!` macro with current rayon thread index
 #[macro_export]
 macro_rules! rayon_warn {
     ($fmt:expr) => {
@@ -74,7 +74,7 @@ macro_rules! rayon_warn {
         );
     };
 }
-/// tracing::errpr! at Rayon thread
+/// convenient `tracing::error!` macro with current rayon thread index
 #[macro_export]
 macro_rules! rayon_error {
     ($fmt:expr) => {

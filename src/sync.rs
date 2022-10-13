@@ -6,10 +6,10 @@ use std::{
     },
 };
 
-use tracing::instrument;
-
+#[cfg(feature = "tracing")]
 use crate::rayon_trace;
-
+use tracing::instrument;
+#[allow(dead_code)]
 pub struct AtomicUsize {
     name: String,
     inner: stdAtomicUsize,
@@ -21,16 +21,20 @@ impl AtomicUsize {
             inner: stdAtomicUsize::new(v),
         }
     }
+    #[allow(clippy::let_and_return)]
     #[instrument(skip(self))]
     pub fn increment(&self) -> usize {
         let prev = self.inner.fetch_add(1, Ordering::SeqCst);
-        rayon_trace!("{} increment", self.name);
+        #[cfg(feature = "tracing")]
+        rayon_trace!("{} increment to {}", self.name, prev + 1);
         prev
     }
+    #[allow(clippy::let_and_return)]
     #[instrument(skip(self))]
     pub fn decrement(&self) -> usize {
         let prev = self.inner.fetch_sub(1, Ordering::SeqCst);
-        rayon_trace!("{} decrement", self.name);
+        #[cfg(feature = "tracing")]
+        rayon_trace!("{} decrement to {}", self.name, prev - 1);
         prev
     }
     #[instrument(skip(self))]

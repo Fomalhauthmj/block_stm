@@ -1,10 +1,10 @@
-use std::{cmp::min, sync::atomic::Ordering};
-
+#[cfg(feature = "tracing")]
+use crate::rayon_trace;
 use crate::{
-    rayon_debug, rayon_error, rayon_trace, rayon_warn,
     sync::{AtomicBool, AtomicUsize, Mutex},
     types::{IncarnationNumber, TransactionIndex, Version},
 };
+use std::{cmp::min, sync::atomic::Ordering};
 use tracing::instrument;
 
 pub struct Scheduler {
@@ -35,21 +35,25 @@ impl TransactionStatus {
     }
     #[instrument(skip(self))]
     pub fn ready_to_execute(&mut self) {
+        #[cfg(feature = "tracing")]
         rayon_trace!("prev TransactionStatus = {:?}", self);
         *self = Self::ReadyToExecute(self.incarnation_number())
     }
     #[instrument(skip(self))]
     pub fn executing(&mut self) {
+        #[cfg(feature = "tracing")]
         rayon_trace!("prev TransactionStatus = {:?}", self);
         *self = Self::Executing(self.incarnation_number())
     }
     #[instrument(skip(self))]
     pub fn executed(&mut self) {
+        #[cfg(feature = "tracing")]
         rayon_trace!("prev TransactionStatus = {:?}", self);
         *self = Self::Executed(self.incarnation_number())
     }
     #[instrument(skip(self))]
     pub fn aborting(&mut self) {
+        #[cfg(feature = "tracing")]
         rayon_trace!("prev TransactionStatus = {:?}", self);
         *self = Self::Aborting(self.incarnation_number())
     }
@@ -63,48 +67,28 @@ pub enum Task {
 impl Scheduler {
     #[instrument(skip(self))]
     fn decrease_execution_idx(&self, target_idx: usize) {
-        let min_val = self
-            .execution_idx
-            .fetch_min(target_idx, Ordering::SeqCst)
-            .min(target_idx);
+        self.execution_idx.fetch_min(target_idx, Ordering::SeqCst);
         self.decrease_cnt.increment();
-        rayon_warn!(
-            "execution_idx should = {}, current execution_idx = {}",
-            min_val,
-            self.execution_idx.load()
-        );
     }
     #[instrument(skip(self))]
     fn decrease_validation_idx(&self, target_idx: usize) {
-        let min_val = self
-            .validation_idx
-            .fetch_min(target_idx, Ordering::SeqCst)
-            .min(target_idx);
+        self.validation_idx.fetch_min(target_idx, Ordering::SeqCst);
         self.decrease_cnt.increment();
-        rayon_warn!(
-            "validation_idx should = {}, current validation_idx = {}",
-            min_val,
-            self.validation_idx.load()
-        );
     }
     #[instrument(skip(self))]
     fn check_done(&self) -> bool {
-        // from aptos-core
         let observed_cnt = self.decrease_cnt.load();
-
         let validation_idx = self.validation_idx.load();
         let execution_idx = self.execution_idx.load();
         let num_tasks = self.num_active_tasks.load();
+
         if min(execution_idx, validation_idx) < self.block_size || num_tasks > 0 {
-            // There is work remaining.
             return false;
         }
 
-        // Re-read and make sure decrease_cnt hasn't changed.
         if observed_cnt == self.decrease_cnt.load() {
-            // why release order
+            // TODO: `aptos-core` use release order,why?
             self.done_marker.store(true);
-            rayon_error!("check done");
             true
         } else {
             false
@@ -116,7 +100,7 @@ impl Scheduler {
             let mut guard = self.txn_status[txn_idx].lock();
             if let TransactionStatus::ReadyToExecute(incarnation_number) = *guard {
                 guard.executing();
-                return Task::Execution(Some((txn_idx, incarnation_number)));
+                return Task::Execution((txn_idx, incarnation_number));
             }
         }
         self.num_active_tasks.decrement();
@@ -143,7 +127,7 @@ impl Scheduler {
         if idx_to_validate < self.block_size {
             let guard = self.txn_status[idx_to_validate].lock();
             if let TransactionStatus::Executed(incarnation_number) = *guard {
-                return Task::Validation(Some((idx_to_validate, incarnation_number)));
+                return Task::Validation((idx_to_validate, incarnation_number));
             }
         }
         self.num_active_tasks.decrement();
@@ -255,15 +239,12 @@ impl Scheduler {
         self.resume_dependencies(deps);
         if self.validation_idx.load() > txn_idx {
             if wrote_new_path {
-                rayon_debug!("wrote_new_path");
                 self.decrease_validation_idx(txn_idx);
             } else {
-                rayon_debug!("execution finished and return validation task directly");
-                return Task::Validation(Some((txn_idx, incarnation_number)));
+                return Task::Validation((txn_idx, incarnation_number));
             }
         }
         self.num_active_tasks.decrement();
-        rayon_debug!("execution finished");
         Task::None
     }
     #[instrument(skip(self))]
@@ -282,7 +263,6 @@ impl Scheduler {
     #[instrument(skip(self))]
     pub fn finish_validation(&self, txn_idx: TransactionIndex, aborted: bool) -> Task {
         if aborted {
-            rayon_debug!("aborted");
             self.set_ready_status(txn_idx);
             self.decrease_validation_idx(txn_idx + 1);
             if self.execution_idx.load() > txn_idx {
@@ -291,7 +271,6 @@ impl Scheduler {
             }
         }
         self.num_active_tasks.decrement();
-        rayon_debug!("validation finished");
         Task::None
     }
 }

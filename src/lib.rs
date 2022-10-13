@@ -1,12 +1,5 @@
 #![deny(missing_docs)]
 //! block_stm implementation
-use executor::Executor;
-use mvmemory::MVMemory;
-use once_cell::sync::Lazy;
-use scheduler::Scheduler;
-use std::marker::PhantomData;
-use traits::{Storage, Transaction, VM};
-
 mod executor;
 mod log;
 mod mvmemory;
@@ -14,9 +7,16 @@ mod scheduler;
 mod sync;
 /// test utils used by benches and tests
 pub mod test_utils;
-/// public abstract traits
+/// abstract traits,used to implement user own execution engine
 pub mod traits;
 mod types;
+
+use executor::Executor;
+use mvmemory::MVMemory;
+use once_cell::sync::Lazy;
+use scheduler::Scheduler;
+use std::marker::PhantomData;
+use traits::{Storage, Transaction, VM};
 
 static RAYON_EXEC_POOL: Lazy<rayon::ThreadPool> = Lazy::new(|| {
     rayon::ThreadPoolBuilder::new()
@@ -50,7 +50,8 @@ where
         let vm = V::new();
         let task = Executor::new(vm, txns, view, mvmemory, scheduler);
         task.run();
-        rayon_debug!("task finished");
+        #[cfg(feature = "tracing")]
+        rayon_trace!("thread task finished");
     }
 }
 impl<T, S, V> ParallelExecutor<T, S, V>
@@ -59,7 +60,7 @@ where
     S: Storage<T = T>,
     V: VM<T = T, S = S>,
 {
-    /// create a parallel executor
+    /// create a parallel executor with given concurrency_level (0 < `concurrency_level` <= `num_cpus::get()`)
     pub fn new(concurrency_level: usize) -> Self {
         assert!(
             concurrency_level > 0 && concurrency_level <= num_cpus::get(),
@@ -71,7 +72,7 @@ where
             phantom: PhantomData,
         }
     }
-    /// parallel execute a batch of txns
+    /// parallel execute txns with given view
     pub fn execute_transactions(&self, txns: &Vec<T>, view: &S) -> Vec<(T::Key, T::Value)> {
         let txns_num = txns.len();
         let mvmemory = MVMemory::new(txns_num);
