@@ -1,22 +1,20 @@
 #![deny(missing_docs)]
 //! block_stm implementation
+/// abstract traits,used to implement user own execution engine
+pub mod core;
 mod executor;
-mod log;
 mod mvmemory;
 mod scheduler;
-mod sync;
 /// test utils used by benches and tests
 pub mod test_utils;
-/// abstract traits,used to implement user own execution engine
-pub mod traits;
 mod types;
 
+use crate::core::{Transaction, VM};
 use executor::Executor;
 use mvmemory::MVMemory;
 use once_cell::sync::Lazy;
 use scheduler::Scheduler;
 use std::marker::PhantomData;
-use traits::{Storage, Transaction, VM};
 
 static RAYON_EXEC_POOL: Lazy<rayon::ThreadPool> = Lazy::new(|| {
     rayon::ThreadPoolBuilder::new()
@@ -26,39 +24,18 @@ static RAYON_EXEC_POOL: Lazy<rayon::ThreadPool> = Lazy::new(|| {
         .unwrap()
 });
 /// parallel executor
-pub struct ParallelExecutor<T, S, V>
+pub struct ParallelExecutor<T, V>
 where
     T: Transaction,
-    S: Storage<T = T>,
-    V: VM<T = T, S = S>,
+    V: VM<T = T>,
 {
     concurrency_level: usize,
-    phantom: PhantomData<(T, S, V)>,
+    phantom: PhantomData<(T, V)>,
 }
-impl<T, S, V> ParallelExecutor<T, S, V>
+impl<T, V> ParallelExecutor<T, V>
 where
     T: Transaction,
-    S: Storage<T = T>,
-    V: VM<T = T, S = S>,
-{
-    fn thread_task(
-        txns: &[T],
-        view: &S,
-        mvmemory: &MVMemory<T::Key, T::Value>,
-        scheduler: &Scheduler,
-    ) {
-        let vm = V::new();
-        let task = Executor::new(vm, txns, view, mvmemory, scheduler);
-        task.run();
-        #[cfg(feature = "tracing")]
-        rayon_trace!("thread task finished");
-    }
-}
-impl<T, S, V> ParallelExecutor<T, S, V>
-where
-    T: Transaction,
-    S: Storage<T = T>,
-    V: VM<T = T, S = S>,
+    V: VM<T = T>,
 {
     /// create a parallel executor with given concurrency_level (0 < `concurrency_level` <= `num_cpus::get()`)
     pub fn new(concurrency_level: usize) -> Self {
@@ -73,14 +50,19 @@ where
         }
     }
     /// parallel execute txns with given view
-    pub fn execute_transactions(&self, txns: &Vec<T>, view: &S) -> Vec<(T::Key, T::Value)> {
+    pub fn execute_transactions(
+        &self,
+        txns: &Vec<T>,
+        parameter: &V::Parameter,
+    ) -> Vec<(T::Key, Option<T::Value>)> {
         let txns_num = txns.len();
         let mvmemory = MVMemory::new(txns_num);
         let scheduler = Scheduler::new(txns_num);
         RAYON_EXEC_POOL.scope(|s| {
             for _ in 0..self.concurrency_level {
                 s.spawn(|_| {
-                    ParallelExecutor::<T, S, V>::thread_task(txns, view, &mvmemory, &scheduler);
+                    let executor = Executor::<T, V>::new(parameter, txns, &mvmemory, &scheduler);
+                    executor.run();
                 });
             }
         });

@@ -1,14 +1,11 @@
 use std::collections::HashMap;
 
 use crate::{
-    executor::ExecutorView,
-    mvmemory::MVMemoryError,
-    traits::{IsReadError, Storage, Transaction, ValueBytes, VM},
-    types::TransactionIndex,
+    core::{Transaction, TransactionOutput, ValueBytes, VM},
+    mvmemory::ReadResult,
     ParallelExecutor,
 };
 use rand::{distributions::Uniform, prelude::Distribution};
-use thiserror::Error;
 /// transfer transaction used for tests and benches
 #[derive(Debug)]
 pub struct TransferTransaction {
@@ -25,81 +22,80 @@ impl Transaction for TransferTransaction {
     type Value = usize;
 }
 impl ValueBytes for usize {
-    fn from_raw_bytes(bytes: Vec<u8>) -> Self {
+    fn serialize(&self) -> Option<Vec<u8>> {
+        Some(self.to_ne_bytes().to_vec())
+    }
+
+    fn deserialize(bytes: &[u8]) -> Self {
         let bytes: [u8; 8] = bytes.try_into().unwrap();
         usize::from_ne_bytes(bytes)
-    }
-    fn to_raw_bytes(&self) -> Vec<u8> {
-        self.to_ne_bytes().to_vec()
     }
 }
 /// hashmap ledger
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Ledger(pub HashMap<usize, usize>);
-impl Storage for Ledger {
+pub struct TransferTransactionOutput(Vec<(usize, usize)>);
+impl TransactionOutput for TransferTransactionOutput {
     type T = TransferTransaction;
 
-    fn read(&self, key: &<Self::T as Transaction>::Key) -> <Self::T as Transaction>::Value {
-        *self.0.get(key).expect("storage read error")
-    }
-}
-
-#[derive(Debug, Error)]
-pub enum TransferError {
-    #[error(transparent)]
-    MVMemory(#[from] MVMemoryError),
-}
-impl IsReadError for TransferError {
-    fn is_read_error(&self) -> bool {
-        if let Self::MVMemory(MVMemoryError::ReadError(_)) = self {
-            return true;
-        }
-        false
-    }
-
-    fn get_blocking_txn_idx(&self) -> Option<TransactionIndex> {
-        if let Self::MVMemory(MVMemoryError::ReadError(idx)) = self {
-            return Some(*idx);
-        }
-        None
+    fn get_write_set(
+        &self,
+    ) -> Vec<(
+        <Self::T as Transaction>::Key,
+        <Self::T as Transaction>::Value,
+    )> {
+        self.0.clone()
     }
 }
 /// transfer vm
-pub struct TransferVM;
+pub struct TransferVM {
+    ledger: Ledger,
+}
 impl VM for TransferVM {
     type T = TransferTransaction;
 
-    type Output = ();
+    type Output = TransferTransactionOutput;
 
-    type Error = TransferError;
+    type Error = ();
 
-    type S = Ledger;
+    type Parameter = Ledger;
 
-    fn new() -> Self {
-        Self
+    fn new(argument: Self::Parameter) -> Self {
+        Self { ledger: argument }
     }
 
-    fn execute(
+    fn execute_transaction(
         &self,
         txn: &Self::T,
-        view: &mut ExecutorView<Self::T, Self::S>,
+        view: &crate::mvmemory::MVMemoryView<
+            <Self::T as Transaction>::Key,
+            <Self::T as Transaction>::Value,
+        >,
     ) -> Result<Self::Output, Self::Error> {
-        #[cfg(feature = "benchmark")]
-        std::thread::sleep(std::time::Duration::from_millis(1));
-        let from_balance = *view.read(&txn.from)?;
-        if from_balance >= txn.money {
-            let to_balance = *view.read(&txn.to)?;
-            view.write(txn.from, from_balance - txn.money);
-            view.write(txn.to, to_balance + txn.money);
-        }
-        Ok(())
+        #[cfg(feature = "simulated_test_utils")]
+        std::thread::sleep(std::time::Duration::from_micros(100));
+        let read = |k| match view.read(k) {
+            ReadResult::Value(v) => Ok(*v),
+            ReadResult::NotFound => Ok(*self.ledger.0.get(k).unwrap()),
+        };
+        let from_balance = read(&txn.from)?;
+        let output = if from_balance >= txn.money {
+            let to_balance = read(&txn.to)?;
+            vec![
+                (txn.from, from_balance - txn.money),
+                (txn.to, to_balance + txn.money),
+            ]
+        } else {
+            vec![]
+        };
+        Ok(TransferTransactionOutput(output))
     }
 }
 /// sequential execute txns,update ledger directly.
 pub fn sequential_execute(txns: &Vec<TransferTransaction>, ledger: &mut Ledger) {
     for txn in txns {
-        #[cfg(feature = "benchmark")]
-        std::thread::sleep(std::time::Duration::from_millis(1));
+        #[cfg(feature = "simulated_test_utils")]
+        std::thread::sleep(std::time::Duration::from_micros(100));
         let from_balance = ledger.0.get(&txn.from).unwrap();
         if from_balance >= &txn.money {
             let to_balance = *ledger.0.get(&txn.to).unwrap();
@@ -114,14 +110,17 @@ pub fn parallel_execute(
     ledger: &mut Ledger,
     concurrency_level: usize,
 ) {
-    let pe = ParallelExecutor::<TransferTransaction, Ledger, TransferVM>::new(concurrency_level);
+    let pe = ParallelExecutor::<TransferTransaction, TransferVM>::new(concurrency_level);
     let changeset = pe.execute_transactions(txns, ledger);
     for (k, v) in changeset {
-        ledger.0.insert(k, v);
+        match v {
+            Some(v) => ledger.0.insert(k, v),
+            None => ledger.0.remove(&k),
+        };
     }
 }
 /// generate random txns and genesis ledger with the given parameters
-pub fn generate_ledger_and_txns(
+pub fn generate_txns_and_ledger(
     accounts_num: usize,
     init_balance: usize,
     txns_num: usize,
