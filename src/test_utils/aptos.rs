@@ -17,7 +17,10 @@ use aptos_types::{
     block_metadata::BlockMetadata,
     on_chain_config::{OnChainConfig, ValidatorSet},
     state_store::{state_key::StateKey, state_storage_usage::StateStorageUsage},
-    transaction::{Transaction as AptosTransaction, TransactionOutput as AptosTransactionOutput},
+    transaction::{
+        ExecutionStatus, Transaction as AptosTransaction,
+        TransactionOutput as AptosTransactionOutput, TransactionStatus,
+    },
     vm_status::VMStatus,
     write_set::WriteOp,
 };
@@ -28,7 +31,6 @@ use aptos_vm::{
     AptosVM, VMExecutor,
 };
 use proptest::{
-    collection::vec,
     prelude::any_with,
     strategy::{Strategy, ValueTree},
     test_runner::TestRunner,
@@ -188,7 +190,6 @@ pub fn generate_aptos_txns_and_state(
     num_transactions: usize,
 ) -> (Vec<AptosTransaction>, FakeDataStore) {
     // prepare
-    let strategy = any_with::<P2PTransferGen>((1_00, 10_000));
     let max_balance = 500_000 * num_transactions as u64 * 5;
     let universe_strategy =
         AccountUniverseGen::strategy(num_accounts, log_balance_strategy(max_balance));
@@ -208,15 +209,17 @@ pub fn generate_aptos_txns_and_state(
         AccountUniverse::new(universe.accounts, universe.pick_style, true)
     };
 
-    let transaction_gens = vec(strategy, num_transactions)
-        .new_tree(&mut runner)
-        .expect("creating a new value should succeed")
-        .current();
-    let mut transactions: Vec<AptosTransaction> = transaction_gens
-        .into_iter()
-        .map(|txn_gen| AptosTransaction::UserTransaction(txn_gen.apply(&mut universe).0))
-        .collect();
-    // TODO: transaction number isn't fixed
+    let mut txns = Vec::new();
+    while txns.len() < num_transactions {
+        let txn_gen = any_with::<P2PTransferGen>((1_00, 10_000))
+            .new_tree(&mut runner)
+            .expect("creating a new value should succeed")
+            .current();
+        let (txn, (status, _)) = txn_gen.apply(&mut universe);
+        if let TransactionStatus::Keep(ExecutionStatus::Success) = status {
+            txns.push(AptosTransaction::UserTransaction(txn));
+        }
+    }
     // Insert a blockmetadata transaction at the beginning to better simulate the real life traffic.
     let validator_set = ValidatorSet::fetch_config(&state.as_move_resolver())
         .expect("Unable to retrieve the validator set from storage");
@@ -230,15 +233,16 @@ pub fn generate_aptos_txns_and_state(
         vec![],
         1,
     );
-    transactions.insert(0, AptosTransaction::BlockMetadata(new_block));
-    (transactions, state)
+    txns.insert(0, AptosTransaction::BlockMetadata(new_block));
+    (txns, state)
 }
 
 /// sequential execute,without applying writeset,return execution duration
-pub fn aptos_sequential_execute(txns: Vec<AptosTransaction>, state: &FakeDataStore) {
+pub fn aptos_sequential_execute(txns: Vec<AptosTransaction>, state: &FakeDataStore) -> Duration {
     // The output is ignored here since we're just testing transaction performance, not trying
     // to assert correctness.
-    AptosVM::execute_block(txns, &state).expect("VM should not fail to start");
+    AptosVM::execute_block_and_keep_vm_status_benchmark(txns, &state)
+        .expect("VM should not fail to start")
 }
 /// sequential execute,with applying writeset,return fakedatastore
 pub fn aptos_sequential_execute_and_apply(
@@ -275,9 +279,13 @@ pub fn aptos_official_parallel_execute(
     txns: Vec<AptosTransaction>,
     state: &FakeDataStore,
     concurrency_level: usize,
-) {
-    let _ =
-        aptos_vm::parallel_executor::ParallelAptosVM::execute_block(txns, state, concurrency_level);
+) -> Duration {
+    aptos_vm::parallel_executor::ParallelAptosVM::execute_block_benchmark(
+        txns,
+        state,
+        concurrency_level,
+    )
+    .expect("should success")
 }
 /// parallel execute,with applying writeset,return fakedatastore,
 pub fn aptos_parallel_execute_and_apply(

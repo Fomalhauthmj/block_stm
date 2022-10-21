@@ -9,7 +9,7 @@ use block_stm::test_utils::{
 use block_stm::test_utils::{
     generate_txns_and_ledger, parallel_execute, sequential_execute, Ledger,
 };
-use criterion::{criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion, Throughput};
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use pprof::criterion::{Output, PProfProfiler};
 
 const TXNS_NUM: usize = 10_000;
@@ -26,26 +26,30 @@ fn conflicting_level(c: &mut Criterion) {
                 BenchmarkId::new("aptos sequential execute", accounts_num),
                 &accounts_num,
                 |b, _| {
-                    b.iter_batched(
-                        || txns.clone(),
-                        |txns| {
-                            aptos_sequential_execute(txns, &state);
-                        },
-                        BatchSize::SmallInput,
-                    )
+                    b.iter_custom(|iters| {
+                        let mut total = Duration::ZERO;
+                        for _ in 0..iters {
+                            total += aptos_sequential_execute(txns.clone(), &state);
+                        }
+                        total
+                    })
                 },
             );
             group.bench_with_input(
                 BenchmarkId::new("aptos official parallel execute", accounts_num),
                 &accounts_num,
                 |b, _| {
-                    b.iter_batched(
-                        || txns.clone(),
-                        |txns| {
-                            aptos_official_parallel_execute(txns, &state, num_cpus::get());
-                        },
-                        BatchSize::SmallInput,
-                    )
+                    b.iter_custom(|iters| {
+                        let mut total = Duration::ZERO;
+                        for _ in 0..iters {
+                            total += aptos_official_parallel_execute(
+                                txns.clone(),
+                                &state,
+                                num_cpus::get(),
+                            );
+                        }
+                        total
+                    })
                 },
             );
             group.bench_with_input(
@@ -113,13 +117,17 @@ fn concurrency_level(c: &mut Criterion) {
                 BenchmarkId::new("aptos official parallel execute", concurrency_level),
                 &concurrency_level,
                 |b, _| {
-                    b.iter_batched(
-                        || txns.clone(),
-                        |txns| {
-                            aptos_official_parallel_execute(txns, &state, concurrency_level);
-                        },
-                        BatchSize::SmallInput,
-                    )
+                    b.iter_custom(|iters| {
+                        let mut total = Duration::ZERO;
+                        for _ in 0..iters {
+                            total += aptos_official_parallel_execute(
+                                txns.clone(),
+                                &state,
+                                concurrency_level,
+                            );
+                        }
+                        total
+                    })
                 },
             );
 
