@@ -1,6 +1,5 @@
 use std::time::{Duration, Instant};
 
-use block_stm::test_utils::aptos_official_parallel_execute;
 #[cfg(feature = "aptos_test_utils")]
 use block_stm::test_utils::{
     aptos_parallel_execute, aptos_sequential_execute, generate_aptos_txns_and_state,
@@ -9,12 +8,21 @@ use block_stm::test_utils::{
 use block_stm::test_utils::{
     generate_txns_and_ledger, parallel_execute, sequential_execute, Ledger,
 };
+use block_stm::{rayon_info, test_utils::aptos_official_parallel_execute};
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use pprof::criterion::{Output, PProfProfiler};
-
 const TXNS_NUM: usize = 10_000;
-
+fn install_logger() {
+    let file_appender = tracing_appender::rolling::hourly("./logs", "benchmark.log");
+    let _ = tracing_subscriber::fmt()
+        .with_ansi(false)
+        .with_writer(file_appender)
+        .with_max_level(tracing::Level::INFO)
+        .try_init();
+}
 fn conflicting_level(c: &mut Criterion) {
+    #[cfg(feature = "tracing")]
+    let _ = install_logger();
     let mut group = c.benchmark_group("conflicting_level");
     group.throughput(Throughput::Elements(TXNS_NUM as u64));
     // accounts num bigger,conflicting level lower
@@ -25,11 +33,17 @@ fn conflicting_level(c: &mut Criterion) {
             group.bench_with_input(
                 BenchmarkId::new("aptos sequential execute", accounts_num),
                 &accounts_num,
-                |b, _| {
+                |b, accounts_nums| {
                     b.iter_custom(|iters| {
                         let mut total = Duration::ZERO;
                         for _ in 0..iters {
-                            total += aptos_sequential_execute(txns.clone(), &state);
+                            let info = aptos_sequential_execute(txns.clone(), &state);
+                            rayon_info!(
+                                "aptos sequential execute(accs={}) {:?}",
+                                accounts_nums,
+                                info
+                            );
+                            total += info.total_time;
                         }
                         total
                     })
@@ -38,15 +52,22 @@ fn conflicting_level(c: &mut Criterion) {
             group.bench_with_input(
                 BenchmarkId::new("aptos official parallel execute", accounts_num),
                 &accounts_num,
-                |b, _| {
+                |b, accounts_num| {
                     b.iter_custom(|iters| {
                         let mut total = Duration::ZERO;
                         for _ in 0..iters {
-                            total += aptos_official_parallel_execute(
+                            let info = aptos_official_parallel_execute(
                                 txns.clone(),
                                 &state,
                                 num_cpus::get(),
                             );
+                            rayon_info!(
+                                "aptos official parallel execute(accs={},cpus={}) {:?}",
+                                accounts_num,
+                                num_cpus::get(),
+                                info
+                            );
+                            total += info.total_time;
                         }
                         total
                     })
@@ -55,11 +76,19 @@ fn conflicting_level(c: &mut Criterion) {
             group.bench_with_input(
                 BenchmarkId::new("aptos parallel execute", accounts_num),
                 &accounts_num,
-                |b, _| {
+                |b, accounts_num| {
                     b.iter_custom(|iters| {
                         let mut total = Duration::ZERO;
                         for _ in 0..iters {
-                            total += aptos_parallel_execute(txns.clone(), &state, num_cpus::get());
+                            let info =
+                                aptos_parallel_execute(txns.clone(), &state, num_cpus::get());
+                            rayon_info!(
+                                "aptos parallel execute(accs={},cpus={}) {:?}",
+                                accounts_num,
+                                num_cpus::get(),
+                                info
+                            );
+                            total += info.total_time;
                         }
                         total
                     })
@@ -105,6 +134,8 @@ fn conflicting_level(c: &mut Criterion) {
 }
 
 fn concurrency_level(c: &mut Criterion) {
+    #[cfg(feature = "tracing")]
+    let _ = install_logger();
     let mut group = c.benchmark_group("concurrency_level");
     group.throughput(Throughput::Elements(TXNS_NUM as u64));
     static ACCOUNTS_NUM: usize = 1_000;
@@ -120,11 +151,18 @@ fn concurrency_level(c: &mut Criterion) {
                     b.iter_custom(|iters| {
                         let mut total = Duration::ZERO;
                         for _ in 0..iters {
-                            total += aptos_official_parallel_execute(
+                            let info = aptos_official_parallel_execute(
                                 txns.clone(),
                                 &state,
                                 concurrency_level,
                             );
+                            rayon_info!(
+                                "aptos official parallel execute(accs={},cpus={}) {:?}",
+                                ACCOUNTS_NUM,
+                                concurrency_level,
+                                info
+                            );
+                            total += info.total_time;
                         }
                         total
                     })
@@ -138,8 +176,15 @@ fn concurrency_level(c: &mut Criterion) {
                     b.iter_custom(|iters| {
                         let mut total = Duration::ZERO;
                         for _ in 0..iters {
-                            total +=
+                            let info =
                                 aptos_parallel_execute(txns.clone(), &state, concurrency_level);
+                            rayon_info!(
+                                "aptos parallel execute(accs={},cpus={}) {:?}",
+                                ACCOUNTS_NUM,
+                                concurrency_level,
+                                info
+                            );
+                            total += info.total_time;
                         }
                         total
                     })

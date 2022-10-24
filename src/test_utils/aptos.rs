@@ -3,9 +3,7 @@ use std::time::{Duration, Instant};
 use aptos_bitvec::BitVec;
 use aptos_crypto::HashValue;
 use aptos_e2e_tests::{
-    account_universe::{
-        log_balance_strategy, AUTransactionGen, AccountUniverse, AccountUniverseGen, P2PTransferGen,
-    },
+    account_universe::{AUTransactionGen, AccountUniverse, AccountUniverseGen, P2PTransferGen},
     data_store::{FakeDataStore, GENESIS_CHANGE_SET_HEAD},
 };
 use aptos_move_deps::move_core_types::{
@@ -190,9 +188,9 @@ pub fn generate_aptos_txns_and_state(
     num_transactions: usize,
 ) -> (Vec<AptosTransaction>, FakeDataStore) {
     // prepare
-    let max_balance = 500_000 * num_transactions as u64 * 5;
+    let max_balance = 1_000_000 * num_transactions as u64;
     let universe_strategy =
-        AccountUniverseGen::strategy(num_accounts, log_balance_strategy(max_balance));
+        AccountUniverseGen::strategy(num_accounts, max_balance..1_000 * max_balance);
     // generate
     let mut runner = TestRunner::default();
     let universe = universe_strategy
@@ -236,13 +234,31 @@ pub fn generate_aptos_txns_and_state(
     txns.insert(0, AptosTransaction::BlockMetadata(new_block));
     (txns, state)
 }
-
+/// info during execution process
+#[derive(Debug)]
+pub struct ExecutionInfo {
+    /// total walltime
+    pub total_time: Duration,
+    /// execute walltime
+    pub execute_phase: Option<Duration>,
+    /// collect walltime
+    pub collect_phase: Option<Duration>,
+}
 /// sequential execute,without applying writeset,return execution duration
-pub fn aptos_sequential_execute(txns: Vec<AptosTransaction>, state: &FakeDataStore) -> Duration {
+pub fn aptos_sequential_execute(
+    txns: Vec<AptosTransaction>,
+    state: &FakeDataStore,
+) -> ExecutionInfo {
     // The output is ignored here since we're just testing transaction performance, not trying
     // to assert correctness.
-    AptosVM::execute_block_and_keep_vm_status_benchmark(txns, &state)
-        .expect("VM should not fail to start")
+    let total_time = AptosVM::execute_block_and_keep_vm_status_benchmark(txns, &state)
+        .expect("VM should not fail to start");
+    // sequential execute doesn't have explicit collect phase
+    ExecutionInfo {
+        total_time,
+        execute_phase: None,
+        collect_phase: None,
+    }
 }
 /// sequential execute,with applying writeset,return fakedatastore
 pub fn aptos_sequential_execute_and_apply(
@@ -257,12 +273,31 @@ pub fn aptos_sequential_execute_and_apply(
         });
     state
 }
+/// official parallel executor from `aptos-core`
+pub fn aptos_official_parallel_execute(
+    txns: Vec<AptosTransaction>,
+    state: &FakeDataStore,
+    concurrency_level: usize,
+) -> ExecutionInfo {
+    let (total_time, execute_phase, collect_phase) =
+        aptos_vm::parallel_executor::ParallelAptosVM::execute_block_benchmark(
+            txns,
+            state,
+            concurrency_level,
+        )
+        .expect("should success");
+    ExecutionInfo {
+        total_time,
+        execute_phase: Some(execute_phase),
+        collect_phase: Some(collect_phase),
+    }
+}
 /// parallel execute,without applying writeset,return execution duration
 pub fn aptos_parallel_execute(
     txns: Vec<AptosTransaction>,
     state: &FakeDataStore,
     concurrency_level: usize,
-) -> Duration {
+) -> ExecutionInfo {
     let pe = ParallelExecutor::<PreprocessedTransaction, AptosVMWrapper<FakeDataStore>>::new(
         concurrency_level,
     );
@@ -270,22 +305,13 @@ pub fn aptos_parallel_execute(
         .par_iter()
         .map(|txn| preprocess_transaction::<AptosVM>(txn.clone()))
         .collect();
-    let start = Instant::now();
-    pe.execute_transactions(&txns, &state);
-    start.elapsed()
-}
-/// official parallel executor from `aptos-core`
-pub fn aptos_official_parallel_execute(
-    txns: Vec<AptosTransaction>,
-    state: &FakeDataStore,
-    concurrency_level: usize,
-) -> Duration {
-    aptos_vm::parallel_executor::ParallelAptosVM::execute_block_benchmark(
-        txns,
-        state,
-        concurrency_level,
-    )
-    .expect("should success")
+    let total_time = Instant::now();
+    let (execute_phase, collect_phase) = pe.execute_transactions_benchmark(&txns, &state);
+    ExecutionInfo {
+        total_time: total_time.elapsed(),
+        execute_phase: Some(execute_phase),
+        collect_phase: Some(collect_phase),
+    }
 }
 /// parallel execute,with applying writeset,return fakedatastore,
 pub fn aptos_parallel_execute_and_apply(

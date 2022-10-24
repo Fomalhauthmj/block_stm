@@ -68,4 +68,29 @@ where
         });
         mvmemory.snapshot()
     }
+    /// execute transactions for benchmark
+    pub fn execute_transactions_benchmark(
+        &self,
+        txns: &Vec<T>,
+        parameter: &V::Parameter,
+    ) -> (std::time::Duration, std::time::Duration) {
+        use std::time::Instant;
+        let txns_num = txns.len();
+        let mvmemory = MVMemory::new(txns_num);
+        let scheduler = Scheduler::new(txns_num);
+        let execute_start = Instant::now();
+        RAYON_EXEC_POOL.scope(|s| {
+            for _ in 0..self.concurrency_level {
+                s.spawn(|_| {
+                    let executor = Executor::<T, V>::new(parameter, txns, &mvmemory, &scheduler);
+                    executor.run();
+                });
+            }
+        });
+        let execute_end = execute_start.elapsed();
+        let collect_start = Instant::now();
+        let _result = mvmemory.snapshot();
+        let collect_end = collect_start.elapsed();
+        (execute_end, collect_end)
+    }
 }

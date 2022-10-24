@@ -7,6 +7,7 @@ mod aptos;
 pub use aptos::{
     aptos_official_parallel_execute, aptos_parallel_execute, aptos_parallel_execute_and_apply,
     aptos_sequential_execute, aptos_sequential_execute_and_apply, generate_aptos_txns_and_state,
+    ExecutionInfo,
 };
 // non smart contract transfer transaction
 #[cfg(feature = "simulated_test_utils")]

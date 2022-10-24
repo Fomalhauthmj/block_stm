@@ -10,7 +10,7 @@ mod tests {
             tracing_subscriber::fmt()
                 .with_ansi(false)
                 .with_writer(non_blocking)
-                .with_max_level(tracing::Level::TRACE)
+                .with_max_level(tracing::Level::INFO)
                 .event_format(format().pretty().with_source_location(true))
                 .init();
             guard
@@ -38,7 +38,7 @@ mod tests {
                     aptos_parallel_execute_and_apply, aptos_sequential_execute_and_apply,
                     generate_aptos_txns_and_state,
                 };
-                let (txns, sequential_state) = generate_aptos_txns_and_state(5, 100);
+                let (txns, sequential_state) = generate_aptos_txns_and_state(3, 10);
                 let parallel_state = sequential_state.clone();
                 let sequential_state =
                     aptos_sequential_execute_and_apply(txns.clone(), sequential_state);
