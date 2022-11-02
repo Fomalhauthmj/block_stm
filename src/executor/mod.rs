@@ -22,12 +22,12 @@ where
     V: VM<T = T>,
 {
     pub fn new(
-        parameter: &V::Parameter,
+        parameter: V::Parameter,
         txns: &'a [T],
         mvmemory: &'a MVMemory<T::Key, T::Value>,
         scheduler: &'a Scheduler,
     ) -> Self {
-        let vm = V::new(parameter.clone());
+        let vm = V::new(parameter);
         Self {
             vm,
             txns,

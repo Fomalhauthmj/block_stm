@@ -28,7 +28,7 @@ pub struct MVMemory<Key, Value> {
 /// public methods used by other components
 impl<Key, Value> MVMemory<Key, Value>
 where
-    Key: Eq + Hash + Send + Sync + Clone,
+    Key: Eq + Hash + Send + Sync + Clone + Debug,
     Value: Send + Sync + ValueBytes,
 {
     pub fn new(block_size: usize) -> Self {
@@ -145,7 +145,10 @@ pub struct ReadDescriptor<K> {
     key: K,
     read_type: ReadType,
 }
-impl<K> ReadDescriptor<K> {
+impl<K> ReadDescriptor<K>
+where
+    K: Debug,
+{
     pub fn new_version(key: K, version: Version) -> Self {
         Self {
             key,
@@ -184,7 +187,7 @@ pub struct MVMemoryView<'a, K, V> {
 /// public methods used by executor
 impl<'a, K, V> MVMemoryView<'a, K, V>
 where
-    K: Eq + Hash + Send + Sync + Clone,
+    K: Eq + Hash + Send + Sync + Clone + Debug,
     V: Send + Sync + ValueBytes,
 {
     pub fn new(txn_idx: TxnIndex, mvmemory: &'a MVMemory<K, V>, scheduler: &'a Scheduler) -> Self {

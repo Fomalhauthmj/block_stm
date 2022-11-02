@@ -1,4 +1,4 @@
-use std::hash::Hash;
+use std::{fmt::Debug, hash::Hash};
 
 use crate::mvmemory::MVMemoryView;
 /// trait used to serialize/deserialize Value
@@ -20,14 +20,14 @@ pub trait Transaction: Sync {
     ///
     /// `Send + Sync` needed by rayon
     ///
-    type Key: Eq + Hash + Clone + Send + Sync;
+    type Key: Eq + Hash + Clone + Send + Sync + Debug;
     /// memory value type read/written by transaction
     ///
     /// `Send + Sync` needed by rayon
     ///
     /// `ValueBytes` needed by mvmemory snapshot
     ///
-    type Value: Send + Sync + ValueBytes;
+    type Value: Send + Sync + ValueBytes + Debug;
 }
 /// transaction output,which used to get transaction's write set
 #[allow(clippy::type_complexity)]
@@ -53,7 +53,7 @@ pub trait VM: Sync {
     /// execution error
     type Error;
     /// parameter needed by creating new execution engine instance
-    type Parameter: Sync + Clone;
+    type Parameter: Send + Sync + Clone;
     /// create new execution engine instance
     fn new(parameter: Self::Parameter) -> Self;
     /// execute single transaction with given mvmemory view

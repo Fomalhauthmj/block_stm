@@ -1,5 +1,10 @@
 #[cfg(test)]
 mod tests {
+    use block_stm::test_utils::simulated::{
+        generate_txns_and_ledger, my_parallel_execute, sequential_execute,
+    };
+    use either::Either;
+
     #[test]
     fn correctness() {
         #[cfg(feature = "tracing")]
@@ -19,36 +24,14 @@ mod tests {
         loop {
             #[cfg(feature = "tracing")]
             block_stm::rayon_info!("correctness test will start");
-            #[cfg(feature = "simulated_test_utils")]
-            {
-                use block_stm::test_utils::{
-                    generate_txns_and_ledger, parallel_execute, sequential_execute,
-                };
-                let (txns, mut sequential_ledger) =
-                    generate_txns_and_ledger(4, 1_000_000, 1_000, 100, 10_000);
-                let mut parallel_ledger = sequential_ledger.clone();
-                sequential_execute(&txns, &mut sequential_ledger);
-                parallel_execute(&txns, &mut parallel_ledger, num_cpus::get());
-                // ensure the outcomes of parallel and sequential execute are consistent
-                assert_eq!(sequential_ledger, parallel_ledger);
-            }
-            #[cfg(feature = "aptos_test_utils")]
-            {
-                use block_stm::test_utils::{
-                    aptos_parallel_execute_and_apply, aptos_sequential_execute_and_apply,
-                    generate_aptos_txns_and_state,
-                };
-                let (txns, sequential_state) = generate_aptos_txns_and_state(3, 10);
-                let parallel_state = sequential_state.clone();
-                let sequential_state =
-                    aptos_sequential_execute_and_apply(txns.clone(), sequential_state);
-                let parallel_state =
-                    aptos_parallel_execute_and_apply(txns, parallel_state, num_cpus::get());
-                // ensure the outcomes of parallel and sequential execute are consistent
-                if sequential_state.state_data != parallel_state.state_data {
-                    panic!()
-                }
-            }
+            let (txns, ledger) = generate_txns_and_ledger(5, 1_000_000, 10_000, 1, 1_000);
+            let (s_output, _) = sequential_execute(&txns, &ledger);
+            let (mp_output, _) = my_parallel_execute(&txns, &ledger, num_cpus::get());
+            let cloned = ledger.clone();
+            assert_eq!(
+                ledger.apply(Either::Left(s_output)),
+                cloned.apply(Either::Right(mp_output))
+            );
             #[cfg(feature = "tracing")]
             block_stm::rayon_info!("correctness test passed");
             loop_cnt += 1;

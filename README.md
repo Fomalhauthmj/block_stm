@@ -6,13 +6,7 @@ So,we have tried our best to make the design of this library corresponds to the 
 Besides,for better re-produceable performace,we have applied many implement techs from `aptos-core` to boost the performance of this library.
 
 # Test
-
-## available testsuites
-
-1. --features simulated_test_utils
-2. --features aptos_test_utils
-
-use `cargo test --features <testsuites> -- --nocapture` to test the correctness of parallel execute,whose outcome should be consistent with sequential execute.
+use `cargo test --all-features -- --nocapture` to test the correctness of parallel execute,whose outcome should be consistent with sequential execute.
 
 **Note**:
 Currently,we generate random txns for each correctness test,and parallel execute only once.Idealy,we should parallel execute multiple times to ensure deterministic of parallel execute in each test.
@@ -21,13 +15,19 @@ Additionally,correctness test is a dead loop,which will test forever until test 
 # Benchmark
 use `cargo bench --features <testsuites>` to benchmark the performace (throughput) of sequential/parallel execute.
 
+## available testsuites
+
+1. --features simulated_transfer
+2. --features aptos_transfer
+
+
 **Note**:
-Currently,for `simulated_test_utils` benchmark,we add
+Currently,for `simulated_transfer` benchmark,we add
 `std::thread::sleep(std::time::Duration::from_micros(100))`
 before each execution of transaction to simulate smart contract execution.
 
 ## Profiling
-use `cargo bench --bench benchmark --features <testsuites> -- --profile-time <profile-time>` to profiling.
+use `cargo bench --bench <bench> --features <testsuite> -- --profile-time <profile-time>` to profiling.
 
 # Limitations and Known Problems
 Sadly, our implement of block-stm currently doesn't support `DeltaOp` and any other features in `aptos-core`,which make the performace of this library exactly poor.
