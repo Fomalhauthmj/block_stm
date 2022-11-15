@@ -110,7 +110,7 @@ impl SequentialVM {
         &self,
         txn: &TransferTransaction,
     ) -> anyhow::Result<TransferTransactionOutput> {
-        #[cfg(feature = "benchmark")]
+        #[cfg(feature = "simulated_sleep")]
         std::thread::sleep(std::time::Duration::from_micros(100));
 
         let read = |k| match self.0.get(k) {

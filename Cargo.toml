@@ -19,39 +19,58 @@ rand = "0.8.5"
 crossbeam = "0.8.2"
 arc-swap = "1.5.1"
 anyhow = "1.0.65"
-aptos_e2e_tests = { package = "language-e2e-tests", git = "https://github.com/Fomalhauthmj/aptos-core", rev = "75552c754b", optional = true }
-aptos_vm = { package = "aptos-vm", git = "https://github.com/Fomalhauthmj/aptos-core", rev = "75552c754b", optional = true }
-aptos_types = { package = "aptos-types", git = "https://github.com/Fomalhauthmj/aptos-core", rev = "75552c754b", optional = true }
-aptos_move_deps = { package = "move-deps", git = "https://github.com/Fomalhauthmj/aptos-core", rev = "75552c754b", optional = true }
-aptos_state_view = { package = "aptos-state-view", git = "https://github.com/Fomalhauthmj/aptos-core", rev = "75552c754b", optional = true }
-aptos_aggregator = { package = "aptos-aggregator", git = "https://github.com/Fomalhauthmj/aptos-core", rev = "75552c754b", optional = true }
-aptos_bitvec = { package = "aptos-bitvec", git = "https://github.com/Fomalhauthmj/aptos-core", rev = "75552c754b", optional = true }
-aptos_crypto = { package = "aptos-crypto", git = "https://github.com/Fomalhauthmj/aptos-core", rev = "75552c754b", optional = true }
-aptos_parallel_executor = { package = "aptos-parallel-executor", git = "https://github.com/Fomalhauthmj/aptos-core", rev = "75552c754b", optional = true }
+aptos_e2e_tests = { package = "language-e2e-tests", path = "../aptos-core/aptos-move/e2e-tests", optional = true }
+aptos_vm = { package = "aptos-vm", path = "../aptos-core/aptos-move/aptos-vm", optional = true }
+aptos_types = { package = "aptos-types", path = "../aptos-core/types", optional = true }
+aptos_move_deps = { package = "move-deps", path = "../aptos-core/aptos-move/move-deps", optional = true }
+aptos_state_view = { package = "aptos-state-view", path = "../aptos-core/storage/state-view", optional = true }
+aptos_aggregator = { package = "aptos-aggregator", path = "../aptos-core/aptos-move/aptos-aggregator", optional = true }
+aptos_bitvec = { package = "aptos-bitvec", path = "../aptos-core/crates/aptos-bitvec", optional = true }
+aptos_crypto = { package = "aptos-crypto", path = "../aptos-core/crates/aptos-crypto", optional = true }
+aptos_parallel_executor = { package = "aptos-parallel-executor", path = "../aptos-core/aptos-move/parallel-executor", optional = true }
 proptest = "1.0.0"
 either = "1.8.0"
+pprof = { version = "0.11.0", features = ["flamegraph", "criterion"] }
+tracing-appender = "0.2.2"
+tracing-subscriber = "0.3.15"
 
 [dev-dependencies]
 criterion = { version = "0.4.0", features = ["html_reports"] }
-pprof = { git = "https://github.com/tikv/pprof-rs", features = [
-    "flamegraph",
-    "criterion",
-] }
 serde_json = "1.0.86"
-tracing-appender = "0.2.2"
-tracing-subscriber = "0.3.15"
+
+[[test]]
+name = "correctness"
+required-features = ["simulated_transfer"]
 
 [[bench]]
 name = "aptos"
 harness = false
-required-features = ["aptos_transfer"]
+required-features = ["aptos_transfer", "bench_info"]
 
 [[bench]]
 name = "simulated"
 harness = false
-required-features = ["simulated_transfer", "benchmark"]
+required-features = ["simulated_transfer", "bench_info", "simulated_sleep"]
+
+[[example]]
+name = "trace_my_single_txn"
+required-features = ["aptos_transfer", "trace_single_txn"]
+
+[[example]]
+name = "trace_aptos_single_txn"
+required-features = ["aptos_transfer", "trace_single_txn"]
 
 [features]
+# used to enable tracing in each aptos txn execution
+trace_single_txn = []
+# used to enable sleep(blocking) in each simulated txn execution
+simulated_sleep = []
+# used to enable log custom benchmark infos
+bench_info = []
+
+tracing = []
+
+# aptos relevant pkgs
 aptos_pkgs = [
     "aptos_e2e_tests",
     "aptos_vm",
@@ -63,7 +82,8 @@ aptos_pkgs = [
     "aptos_crypto",
     "aptos_parallel_executor",
 ]
-aptos_transfer = ["aptos_pkgs", "tracing"]
-simulated_transfer = ["aptos_pkgs", "tracing"]
-benchmark = []
-tracing = []
+# aptos smart contract transfer,mainly used to bench performance
+aptos_transfer = ["aptos_pkgs"]
+# simulated transfer,mainly used to verify correctness
+# todo remove aptos_pkgs
+simulated_transfer = ["aptos_pkgs"]

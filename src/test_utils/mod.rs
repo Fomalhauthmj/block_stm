@@ -5,6 +5,7 @@ use std::time::Duration;
 pub mod aptos;
 // log utils
 mod log;
+pub use log::try_init_global_subscriber;
 /// simulated transfer transaction
 #[cfg(feature = "simulated_transfer")]
 pub mod simulated;

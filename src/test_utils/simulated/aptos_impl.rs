@@ -79,7 +79,7 @@ impl<'a> ExecutorTask for ParallelVM<'a> {
         view: &MVHashMapView<<Self::T as Transaction>::Key, <Self::T as Transaction>::Value>,
         txn: &Self::T,
     ) -> ExecutionStatus<Self::Output, Self::Error> {
-        #[cfg(feature = "benchmark")]
+        #[cfg(feature = "simulated_sleep")]
         std::thread::sleep(std::time::Duration::from_micros(100));
 
         let read = |key| match view.read(key) {

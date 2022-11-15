@@ -58,7 +58,7 @@ impl<'a> VM for ParallelVM<'a> {
             <Self::T as Transaction>::Value,
         >,
     ) -> Result<Self::Output, Self::Error> {
-        #[cfg(feature = "benchmark")]
+        #[cfg(feature = "simulated_sleep")]
         std::thread::sleep(std::time::Duration::from_micros(100));
 
         let read = |k| match view.read(k) {

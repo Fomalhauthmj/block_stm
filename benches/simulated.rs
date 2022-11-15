@@ -1,17 +1,9 @@
-use block_stm::test_utils::{simulated::*, BenchmarkInfos};
+use block_stm::test_utils::{simulated::*, try_init_global_subscriber, BenchmarkInfos};
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use pprof::criterion::{Output, PProfProfiler};
 use std::time::Duration;
 const TXNS_NUM: usize = 10_000;
 
-fn install_logger() {
-    let file_appender = tracing_appender::rolling::hourly("./logs", "simulated.log");
-    let _ = tracing_subscriber::fmt()
-        .with_ansi(false)
-        .with_writer(file_appender)
-        .with_max_level(tracing::Level::INFO)
-        .try_init();
-}
 fn log_benchmark_info(
     name: &str,
     accs: usize,
@@ -19,7 +11,7 @@ fn log_benchmark_info(
     cpus: usize,
     infos: &mut BenchmarkInfos,
 ) {
-    #[cfg(feature = "tracing")]
+    #[cfg(feature = "bench_info")]
     {
         block_stm::rayon_info!("{} (accs={},txns={},cpus={})", name, accs, txns, cpus);
         block_stm::rayon_info!("{}", infos.mean());
@@ -27,8 +19,8 @@ fn log_benchmark_info(
     }
 }
 fn conflicting_level(c: &mut Criterion) {
-    #[cfg(feature = "tracing")]
-    let _ = install_logger();
+    #[cfg(feature = "bench_info")]
+    let _guard = try_init_global_subscriber("./logs", "simulated_bench", tracing::Level::INFO);
     let mut group = c.benchmark_group("conflicting_level");
     group.throughput(Throughput::Elements(TXNS_NUM as u64));
     let mut infos = BenchmarkInfos::default();
@@ -106,8 +98,8 @@ fn conflicting_level(c: &mut Criterion) {
 }
 
 fn concurrency_level(c: &mut Criterion) {
-    #[cfg(feature = "tracing")]
-    let _ = install_logger();
+    #[cfg(feature = "bench_info")]
+    let _guard = try_init_global_subscriber("./logs", "simulated_bench", tracing::Level::INFO);
     let mut group = c.benchmark_group("concurrency_level");
     group.throughput(Throughput::Elements(TXNS_NUM as u64));
     static ACCOUNTS_NUM: usize = 1_000;
