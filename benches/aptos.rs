@@ -20,7 +20,7 @@ fn log_benchmark_info(
 }
 fn bench(c: &mut Criterion) {
     #[cfg(feature = "bench_info")]
-    let _guard = try_init_global_subscriber("./logs", "aptos_bench", tracing::Level::INFO);
+    let _guard = try_init_global_subscriber("./logs", "aptos_bench", tracing::Level::TRACE);
     let mut group = c.benchmark_group("conflicting_level");
     group.throughput(Throughput::Elements(TXNS_NUM as u64));
     let mut infos = BenchmarkInfos::default();
