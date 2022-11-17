@@ -1,7 +1,7 @@
 fn main() {
     let _guard = block_stm::test_utils::try_init_global_subscriber(
         "./logs",
-        "trace_my_single_txn",
+        "my_single_txn",
         tracing::Level::TRACE,
     );
     let (txns, state) = block_stm::test_utils::aptos::generate_txns_and_state(1_000, 10_000);

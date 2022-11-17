@@ -47,33 +47,27 @@ name = "aptos"
 harness = false
 required-features = ["aptos_transfer", "bench_info"]
 
-[[bench]]
-name = "simulated"
-harness = false
-required-features = ["simulated_transfer", "bench_info", "simulated_sleep"]
+[[example]]
+name = "my_single_txn"
+required-features = ["traced_aptos_transfer","trace_single_txn"]
 
 [[example]]
-name = "trace_my_single_txn"
-required-features = ["aptos_transfer", "trace_single_txn"]
+name = "aptos_se_single_txn"
+required-features = ["traced_aptos_transfer"]
 
 [[example]]
-name = "trace_aptos_single_txn"
-required-features = ["aptos_transfer", "trace_single_txn"]
+name = "aptos_pe_single_txn"
+required-features = ["traced_aptos_transfer"]
+
 
 [features]
 # used to enable tracing in each aptos txn execution
 trace_single_txn = []
-# used to enable sleep(blocking) in each simulated txn execution
-simulated_sleep = []
 # used to enable log custom benchmark infos
 bench_info = []
-
-tracing = []
-
 # aptos relevant pkgs
 aptos_pkgs = [
     "aptos_e2e_tests",
-    "aptos_vm",
     "aptos_types",
     "aptos_move_deps",
     "aptos_state_view",
@@ -82,8 +76,11 @@ aptos_pkgs = [
     "aptos_crypto",
     "aptos_parallel_executor",
 ]
-# aptos smart contract transfer,mainly used to bench performance
-aptos_transfer = ["aptos_pkgs"]
-# simulated transfer,mainly used to verify correctness
-# todo remove aptos_pkgs
-simulated_transfer = ["aptos_pkgs"]
+# trace each txn execution
+traced_aptos_vm = ["aptos_vm/external_tracing"]
+# smart contract transfer txn,mainly used to benchmark
+traced_aptos_transfer = ["aptos_pkgs", "traced_aptos_vm"]
+# smart contract transfer txn,mainly used to benchmark
+aptos_transfer = ["aptos_pkgs", "aptos_vm"]
+# simulated transfer txn,mainly used to verify correctness
+simulated_transfer = []

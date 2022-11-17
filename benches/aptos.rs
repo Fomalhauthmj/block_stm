@@ -18,7 +18,7 @@ fn log_benchmark_info(
         infos.clear_infos();
     }
 }
-fn conflicting_level(c: &mut Criterion) {
+fn bench(c: &mut Criterion) {
     #[cfg(feature = "bench_info")]
     let _guard = try_init_global_subscriber("./logs", "aptos_bench", tracing::Level::INFO);
     let mut group = c.benchmark_group("conflicting_level");
@@ -95,11 +95,7 @@ fn conflicting_level(c: &mut Criterion) {
         );
     }
     group.finish();
-}
 
-fn concurrency_level(c: &mut Criterion) {
-    #[cfg(feature = "bench_info")]
-    let _guard = try_init_global_subscriber("./logs", "aptos_bench", tracing::Level::INFO);
     let mut group = c.benchmark_group("concurrency_level");
     group.throughput(Throughput::Elements(TXNS_NUM as u64));
     static ACCOUNTS_NUM: usize = 1_000;
@@ -156,5 +152,5 @@ fn concurrency_level(c: &mut Criterion) {
 criterion_group!(
     name = benches;
     config=Criterion::default().with_profiler(PProfProfiler::new(100,Output::Flamegraph(None))).sample_size(10);
-    targets=conflicting_level, concurrency_level);
+    targets=bench);
 criterion_main!(benches);

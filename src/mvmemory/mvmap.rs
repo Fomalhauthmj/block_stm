@@ -83,7 +83,7 @@ where
     }
     pub fn write(&self, k: Key, v: Value, version: Version) {
         let (txn_idx, incarnation) = version;
-        let mut map = self.inner.entry(k).or_insert(BTreeMap::new());
+        let mut map = self.inner.entry(k).or_default();
         map.insert(
             txn_idx,
             CachePadded::new(Entry::new(incarnation, Arc::new(v))),

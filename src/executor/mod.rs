@@ -38,13 +38,6 @@ where
     pub fn run(&self) {
         let mut task = SchedulerTask::NoTask;
         loop {
-            #[cfg(feature = "tracing")]
-            {
-                if let SchedulerTask::NoTask = task {
-                } else {
-                    crate::rayon_trace!("get task = {:?}", task);
-                }
-            }
             task = match task {
                 SchedulerTask::Execution(version, None, guard) => self.try_execute(version, guard),
                 SchedulerTask::Execution(_, Some(condvar), _) => {

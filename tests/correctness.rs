@@ -10,8 +10,8 @@ mod tests {
         let mut loop_cnt = 0;
         loop {
             let (txns, ledger) = generate_txns_and_ledger(5, 1_000_000, 10_000, 1, 1_000);
-            let (s_output, _) = sequential_execute(&txns, &ledger);
-            let (mp_output, _) = my_parallel_execute(&txns, &ledger, num_cpus::get());
+            let s_output = sequential_execute(&txns, &ledger);
+            let mp_output = my_parallel_execute(&txns, &ledger, num_cpus::get());
             let cloned = ledger.clone();
             assert_eq!(
                 ledger.apply(Either::Left(s_output)),
