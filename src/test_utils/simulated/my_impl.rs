@@ -1,6 +1,8 @@
+use std::sync::Arc;
+
 use crate::{
     core::{Transaction, TransactionOutput, ValueBytes, VM},
-    mvmemory::ReadResult,
+    mvmemory::{MVMemoryView, ReadResult},
     ParallelExecutor,
 };
 
@@ -33,15 +35,15 @@ impl TransactionOutput for TransferTransactionOutput {
         self.0.clone()
     }
 }
-struct ParallelVM<'a>(&'a Ledger);
-impl<'a> VM for ParallelVM<'a> {
+struct ParallelVM(Arc<Ledger>);
+impl VM for ParallelVM {
     type T = TransferTransaction;
 
     type Output = TransferTransactionOutput;
 
     type Error = ();
 
-    type Parameter = &'a Ledger;
+    type Parameter = Arc<Ledger>;
 
     fn new(argument: Self::Parameter) -> Self {
         Self(argument)
@@ -50,10 +52,7 @@ impl<'a> VM for ParallelVM<'a> {
     fn execute_transaction(
         &self,
         txn: &Self::T,
-        view: &crate::mvmemory::MVMemoryView<
-            <Self::T as Transaction>::Key,
-            <Self::T as Transaction>::Value,
-        >,
+        view: &MVMemoryView<Self::T, Self>,
     ) -> Result<Self::Output, Self::Error> {
         let read = |k| match view.read(k) {
             ReadResult::Value(v) => Ok(*v),
@@ -74,10 +73,11 @@ impl<'a> VM for ParallelVM<'a> {
 }
 /// parallel execute txns
 pub fn my_parallel_execute(
-    txns: &Vec<TransferTransaction>,
-    ledger: &Ledger,
+    txns: Vec<TransferTransaction>,
+    ledger: Ledger,
     concurrency_level: usize,
 ) -> Vec<(usize, Option<usize>)> {
     let pe = ParallelExecutor::<TransferTransaction, ParallelVM>::new(concurrency_level);
+    let ledger = Arc::new(ledger);
     pe.execute_transactions(txns, ledger)
 }

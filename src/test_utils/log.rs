@@ -12,6 +12,8 @@ pub fn try_init_global_subscriber(
         .with_ansi(false)
         .with_writer(non_blocking)
         .with_max_level(filter)
+        .with_thread_ids(true)
+        .with_thread_names(true)
         .event_format(format().pretty().with_source_location(true))
         .try_init()
         .map_or_else(|e| Err(anyhow!("{:?}", e)), |_| Ok(guard))

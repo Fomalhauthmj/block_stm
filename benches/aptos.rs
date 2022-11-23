@@ -25,7 +25,7 @@ fn bench(c: &mut Criterion) {
     group.throughput(Throughput::Elements(TXNS_NUM as u64));
     let mut infos = BenchmarkInfos::default();
     // accounts num bigger,conflicting level lower
-    for accounts_num in [3, 10, 100, 1000] {
+    for accounts_num in [10, 100, 1000] {
         let (txns, state) = generate_txns_and_state(accounts_num, TXNS_NUM);
         group.bench_with_input(
             BenchmarkId::new("aptos sequential execute", accounts_num),
@@ -78,7 +78,9 @@ fn bench(c: &mut Criterion) {
                 b.iter_custom(|iters| {
                     let mut total = Duration::ZERO;
                     for _ in 0..iters {
-                        let (_, info) = my_parallel_execute(&txns, &state, num_cpus::get());
+                        let txns = txns.clone();
+                        let state = state.clone();
+                        let (_, info) = my_parallel_execute(txns, state, num_cpus::get());
                         total += info.total_time;
                         infos.add_info(info);
                     }
@@ -131,7 +133,9 @@ fn bench(c: &mut Criterion) {
                 b.iter_custom(|iters| {
                     let mut total = Duration::ZERO;
                     for _ in 0..iters {
-                        let (_, info) = my_parallel_execute(&txns, &state, concurrency_level);
+                        let txns = txns.clone();
+                        let state = state.clone();
+                        let (_, info) = my_parallel_execute(txns, state, concurrency_level);
                         total += info.total_time;
                         infos.add_info(info);
                     }

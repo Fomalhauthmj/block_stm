@@ -14,7 +14,8 @@ use executor::Executor;
 use mvmemory::MVMemory;
 use once_cell::sync::Lazy;
 use scheduler::Scheduler;
-use std::marker::PhantomData;
+use std::{marker::PhantomData, sync::Arc};
+use types::AtomicUsize;
 
 static RAYON_EXEC_POOL: Lazy<rayon::ThreadPool> = Lazy::new(|| {
     rayon::ThreadPoolBuilder::new()
@@ -23,6 +24,8 @@ static RAYON_EXEC_POOL: Lazy<rayon::ThreadPool> = Lazy::new(|| {
         .build()
         .unwrap()
 });
+static ACTIVE_STEALING_WORKER: Lazy<AtomicUsize> = Lazy::new(|| AtomicUsize::new(0));
+static STEALING_WORKER_LIMIT: Lazy<usize> = Lazy::new(|| 1);
 /// parallel executor
 pub struct ParallelExecutor<T, V>
 where
@@ -35,7 +38,7 @@ where
 impl<T, V> ParallelExecutor<T, V>
 where
     T: Transaction,
-    V: VM<T = T>,
+    V: VM<T = T> + 'static,
 {
     /// create a parallel executor with given concurrency_level (0 < `concurrency_level` <= `num_cpus::get()`)
     pub fn new(concurrency_level: usize) -> Self {
@@ -52,17 +55,23 @@ where
     /// parallel execute txns with given view
     pub fn execute_transactions(
         &self,
-        txns: &Vec<T>,
+        txns: Vec<T>,
         parameter: V::Parameter,
     ) -> Vec<(T::Key, Option<T::Value>)> {
+        let txns = Arc::new(txns);
         let txns_num = txns.len();
-        let mvmemory = MVMemory::new(txns_num);
-        let scheduler = Scheduler::new(txns_num);
+        let mvmemory = Arc::new(MVMemory::new(txns_num));
+        let scheduler = Arc::new(Scheduler::new(txns_num));
+
         RAYON_EXEC_POOL.scope(|s| {
             for _ in 0..self.concurrency_level {
                 s.spawn(|_| {
-                    let executor =
-                        Executor::<T, V>::new(parameter.clone(), txns, &mvmemory, &scheduler);
+                    let executor = Executor::<T, V>::new(
+                        parameter.clone(),
+                        txns.clone(),
+                        mvmemory.clone(),
+                        scheduler.clone(),
+                    );
                     executor.run();
                 });
             }
@@ -72,7 +81,7 @@ where
     /// execute transactions for benchmark
     pub fn execute_transactions_benchmark(
         &self,
-        txns: &Vec<T>,
+        txns: Vec<T>,
         parameter: V::Parameter,
     ) -> (
         Vec<(T::Key, Option<T::Value>)>,
@@ -80,17 +89,23 @@ where
         std::time::Duration,
     ) {
         use std::time::Instant;
+
+        let txns = Arc::new(txns);
         let txns_num = txns.len();
-        let mvmemory = MVMemory::new(txns_num);
-        let scheduler = Scheduler::new(txns_num);
+        let mvmemory = Arc::new(MVMemory::new(txns_num));
+        let scheduler = Arc::new(Scheduler::new(txns_num));
 
         let execute_start = Instant::now();
 
         RAYON_EXEC_POOL.scope(|s| {
             for _ in 0..self.concurrency_level {
                 s.spawn(|_| {
-                    let executor =
-                        Executor::<T, V>::new(parameter.clone(), txns, &mvmemory, &scheduler);
+                    let executor = Executor::<T, V>::new(
+                        parameter.clone(),
+                        txns.clone(),
+                        mvmemory.clone(),
+                        scheduler.clone(),
+                    );
                     executor.run();
                 });
             }
@@ -103,6 +118,7 @@ where
         let result = mvmemory.snapshot();
 
         let collect_end = collect_start.elapsed();
+
         (result, execute_end, collect_end)
     }
 }

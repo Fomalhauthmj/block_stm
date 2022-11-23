@@ -1,10 +1,12 @@
 use std::{fmt::Debug, hash::Hash, sync::Arc};
 
 use crate::{
-    core::ValueBytes,
+    core::{Transaction, ValueBytes, VM},
+    executor::StealingExecutor,
     scheduler::Scheduler,
     types::Mutex,
-    types::{Incarnation, TxnIndex, Version},
+    types::{AtomicBool, Incarnation, TxnIndex, Version},
+    ACTIVE_STEALING_WORKER, STEALING_WORKER_LIMIT,
 };
 use arc_swap::ArcSwapOption;
 use crossbeam::utils::CachePadded;
@@ -80,12 +82,14 @@ where
         }
         true
     }
-    pub fn snapshot(self) -> Vec<(Key, Option<Value>)> {
-        let map = self.data.inner;
-        map.into_par_iter()
-            .filter(|(_, v)| !v.is_empty())
-            .map(|(location, versions)| {
-                if let Some((_, enrty)) = versions.range(0..self.block_size).next_back() {
+
+    pub fn snapshot(&self) -> Vec<(Key, Option<Value>)> {
+        let map = &self.data.inner;
+        map.par_iter()
+            .filter(|data| !data.value().is_empty())
+            .map(|data| {
+                if let Some((_, enrty)) = data.value().range(0..self.block_size).next_back() {
+                    let location = data.key().clone();
                     match &enrty.cell {
                         // TODO: make sense?
                         EntryCell::Write(_, v) => match v.serialize() {
@@ -177,28 +181,42 @@ pub enum ReadResult<V> {
     NotFound,
 }
 /// mvmemory view,mvmemory used to read,scheduler used to add dependency
-pub struct MVMemoryView<'a, K, V> {
+pub struct MVMemoryView<T, V>
+where
+    T: Transaction,
+    V: VM<T = T>,
+{
+    parameter: V::Parameter,
     txn_idx: TxnIndex,
-    mvmemory: &'a MVMemory<K, V>,
-    scheduler: &'a Scheduler,
+    txns: Arc<Vec<T>>,
+    mvmemory: Arc<MVMemory<T::Key, T::Value>>,
+    scheduler: Arc<Scheduler>,
     /// Mutex used to be `Sync`
-    captured_reads: Mutex<Vec<ReadDescriptor<K>>>,
+    captured_reads: Mutex<Vec<ReadDescriptor<T::Key>>>,
 }
 /// public methods used by executor
-impl<'a, K, V> MVMemoryView<'a, K, V>
+impl<T, V> MVMemoryView<T, V>
 where
-    K: Eq + Hash + Send + Sync + Clone + Debug,
-    V: Send + Sync + ValueBytes,
+    T: Transaction,
+    V: VM<T = T> + 'static,
 {
-    pub fn new(txn_idx: TxnIndex, mvmemory: &'a MVMemory<K, V>, scheduler: &'a Scheduler) -> Self {
+    pub fn new(
+        parameter: V::Parameter,
+        txn_idx: TxnIndex,
+        txns: Arc<Vec<T>>,
+        mvmemory: Arc<MVMemory<T::Key, T::Value>>,
+        scheduler: Arc<Scheduler>,
+    ) -> Self {
         Self {
+            parameter,
             txn_idx,
+            txns,
             mvmemory,
             scheduler,
             captured_reads: Mutex::new(Vec::new()),
         }
     }
-    pub fn read(&self, k: &K) -> ReadResult<V> {
+    pub fn read(&self, k: &T::Key) -> ReadResult<T::Value> {
         loop {
             match self.mvmemory.read(k, self.txn_idx) {
                 Ok(MVMapOutput::Version(version, v)) => {
@@ -219,7 +237,37 @@ where
                         .wait_for_dependency(self.txn_idx, blocking_txn_idx)
                     {
                         Some(condvar) => {
-                            condvar.wait();
+                            crate::rayon_trace!(
+                                "read deps({}->{})",
+                                blocking_txn_idx,
+                                self.txn_idx
+                            );
+                            let prev = ACTIVE_STEALING_WORKER.increment();
+                            if prev < *STEALING_WORKER_LIMIT {
+                                let flag = Arc::new(AtomicBool::new(false));
+
+                                let parameter = self.parameter.clone();
+                                let txns = self.txns.clone();
+                                let mvmemory = self.mvmemory.clone();
+                                let scheduler = self.scheduler.clone();
+
+                                let shared_flag = flag.clone();
+                                let _ = std::thread::Builder::new()
+                                    .name("stealing_worker".into())
+                                    .spawn(move || {
+                                        let stealing_executor = StealingExecutor::<T, V>::new(
+                                            parameter, txns, mvmemory, scheduler,
+                                        );
+                                        stealing_executor.stealing_run(shared_flag);
+                                    });
+                                crate::rayon_trace!("stealing worker has created,wait here");
+                                condvar.wait();
+                                flag.store(true);
+                            } else {
+                                ACTIVE_STEALING_WORKER.decrement();
+                                crate::rayon_error!("can't exceed stealing worker limit,wait here");
+                                condvar.wait();
+                            }
                         }
                         None => continue,
                     }
@@ -227,7 +275,7 @@ where
             }
         }
     }
-    pub fn take_read_set(&mut self) -> Vec<ReadDescriptor<K>> {
+    pub fn take_read_set(&mut self) -> Vec<ReadDescriptor<T::Key>> {
         let mut read_set = self.captured_reads.lock();
         std::mem::take(&mut read_set)
     }

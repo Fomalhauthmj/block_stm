@@ -11,7 +11,7 @@ pub trait ValueBytes {
 /// transaction type
 ///
 /// `Sync` needed by rayon
-pub trait Transaction: Sync {
+pub trait Transaction: Send + Sync + 'static {
     /// memory location accessed by transaction
     ///
     /// `Eq + Hash` needed by dashmap
@@ -45,7 +45,7 @@ pub trait TransactionOutput {
 /// execution engine
 ///
 /// `Sync` needed by rayon
-pub trait VM: Sync {
+pub trait VM: Sync + Sized {
     /// transaction type
     type T: Transaction;
     /// execution output
@@ -60,6 +60,6 @@ pub trait VM: Sync {
     fn execute_transaction(
         &self,
         txn: &Self::T,
-        view: &MVMemoryView<<Self::T as Transaction>::Key, <Self::T as Transaction>::Value>,
+        view: &MVMemoryView<Self::T, Self>,
     ) -> Result<Self::Output, Self::Error>;
 }

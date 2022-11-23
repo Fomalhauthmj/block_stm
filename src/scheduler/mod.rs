@@ -43,6 +43,26 @@ impl Scheduler {
             }
         }
     }
+    pub fn stealing_next_task(&self) -> SchedulerTask {
+        if self.done() {
+            return SchedulerTask::Done;
+        }
+        let idx_to_execute = self.execution_idx.load();
+        let idx_to_validate = self.validation_idx.load();
+        crate::rayon_trace!(
+            "idx_to_execute={},idx_to_validate={}",
+            idx_to_execute,
+            idx_to_validate
+        );
+        if idx_to_execute < idx_to_validate {
+            if let Some((version, condvar, guard)) = self.next_version_to_execute() {
+                return SchedulerTask::Execution(version, condvar, guard);
+            }
+        } else if let Some((version, guard)) = self.next_version_to_validate() {
+            return SchedulerTask::Validation(version, guard);
+        }
+        SchedulerTask::NoTask
+    }
     pub fn abort(&self, txn_idx: TxnIndex, incarnation: Incarnation) -> bool {
         let mut guard = self.txn_status[txn_idx].lock();
         if TransactionStatus::Executed(incarnation) == *guard {
@@ -97,6 +117,7 @@ impl Scheduler {
         guard: TaskGuard<'a>,
     ) -> SchedulerTask<'a> {
         if aborted {
+            crate::rayon_trace!("validate failed for {:?}", txn_idx);
             self.set_ready_status(txn_idx);
             self.decrease_validation_idx(txn_idx + 1);
             if self.execution_idx.load() > txn_idx {

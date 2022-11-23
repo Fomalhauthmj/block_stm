@@ -1,4 +1,4 @@
-use std::time::Instant;
+use std::{sync::Arc, time::Instant};
 
 use aptos_e2e_tests::data_store::FakeDataStore;
 use aptos_move_deps::move_core_types::{ident_str, language_storage::ModuleId};
@@ -43,15 +43,23 @@ impl Transaction for PreprocessedTransaction {
     type Value = WriteOp;
 }
 /// executor view
-pub struct ExecutorView<'a, S: StateView> {
-    base_view: &'a S,
-    hashmap_view: &'a MVMemoryView<'a, StateKey, WriteOp>,
+pub struct ExecutorView<'a, S, V>
+where
+    S: StateView + Send,
+    V: VM<T = PreprocessedTransaction>,
+{
+    base_view: Arc<S>,
+    hashmap_view: &'a MVMemoryView<PreprocessedTransaction, V>,
 }
-impl<'a, S: StateView> ExecutorView<'a, S> {
+impl<'a, S, V> ExecutorView<'a, S, V>
+where
+    S: StateView + Send,
+    V: VM<T = PreprocessedTransaction> + 'static,
+{
     pub fn new_view(
-        base_view: &'a S,
-        hashmap_view: &'a MVMemoryView<StateKey, WriteOp>,
-    ) -> StorageAdapterOwned<ExecutorView<'a, S>> {
+        base_view: Arc<S>,
+        hashmap_view: &'a MVMemoryView<PreprocessedTransaction, V>,
+    ) -> StorageAdapterOwned<Self> {
         Self {
             base_view,
             hashmap_view,
@@ -59,7 +67,11 @@ impl<'a, S: StateView> ExecutorView<'a, S> {
         .into_move_resolver()
     }
 }
-impl<'a, S: StateView> StateView for ExecutorView<'a, S> {
+impl<'a, S, V> StateView for ExecutorView<'a, S, V>
+where
+    S: StateView + Send,
+    V: VM<T = PreprocessedTransaction> + 'static,
+{
     // read from hashmap or from storage
     fn get_state_value(&self, state_key: &StateKey) -> anyhow::Result<Option<Vec<u8>>> {
         match self.hashmap_view.read(state_key) {
@@ -96,16 +108,16 @@ impl TransactionOutput for aptos_types::transaction::TransactionOutput {
     }
 }
 /// smart contract execution engine
-pub struct AptosVMWrapper<'a, S>
+pub struct AptosVMWrapper<S>
 where
-    S: StateView,
+    S: StateView + Send + Sync,
 {
     vm: AptosVM,
-    base_view: &'a S,
+    base_view: Arc<S>,
 }
-impl<'a, S> VM for AptosVMWrapper<'a, S>
+impl<S> VM for AptosVMWrapper<S>
 where
-    S: StateView,
+    S: StateView + Send + Sync + 'static,
 {
     type T = PreprocessedTransaction;
 
@@ -113,13 +125,13 @@ where
 
     type Error = VMStatus;
 
-    type Parameter = &'a S;
+    type Parameter = Arc<S>;
 
     fn new(parameter: Self::Parameter) -> Self {
-        let vm = AptosVM::new(parameter);
+        let vm = AptosVM::new(&parameter);
         let _ = vm.load_module(
             &ModuleId::new(CORE_CODE_ADDRESS, ident_str!("account").to_owned()),
-            &StorageAdapter::new(parameter),
+            &StorageAdapter::new(&parameter),
         );
         Self {
             vm,
@@ -130,13 +142,13 @@ where
     fn execute_transaction(
         &self,
         txn: &Self::T,
-        view: &MVMemoryView<<Self::T as Transaction>::Key, <Self::T as Transaction>::Value>,
+        view: &MVMemoryView<Self::T, Self>,
     ) -> Result<Self::Output, Self::Error> {
         #[cfg(feature = "trace_single_txn")]
         let start = std::time::Instant::now();
 
         let log_context = AdapterLogSchema::new(self.base_view.id(), view.txn_idx());
-        let executor_view = ExecutorView::new_view(self.base_view, view);
+        let executor_view = ExecutorView::new_view(self.base_view.clone(), view);
         let result = match self
             .vm
             .execute_single_transaction(txn, &executor_view, &log_context)
@@ -160,13 +172,14 @@ where
 }
 /// parallel execute,without applying writeset,return execution duration
 pub fn my_parallel_execute(
-    txns: &Vec<PreprocessedTransaction>,
-    state: &FakeDataStore,
+    txns: Vec<PreprocessedTransaction>,
+    state: FakeDataStore,
     concurrency_level: usize,
 ) -> (Vec<(StateKey, Option<WriteOp>)>, BenchmarkInfo) {
     let pe = ParallelExecutor::<PreprocessedTransaction, AptosVMWrapper<FakeDataStore>>::new(
         concurrency_level,
     );
+    let state = Arc::new(state);
     let total_time = Instant::now();
     let (output, execute, collect) = pe.execute_transactions_benchmark(txns, state);
     (

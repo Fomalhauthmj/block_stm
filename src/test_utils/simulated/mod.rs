@@ -69,8 +69,8 @@ impl Ledger {
 /// generate random txns and genesis ledger with the given parameters
 pub fn generate_txns_and_ledger(
     accounts_num: usize,
-    init_balance: usize,
     txns_num: usize,
+    init_balance: usize,
     min_txn_money: usize,
     max_txn_money: usize,
 ) -> (Vec<TransferTransaction>, Ledger) {
@@ -142,13 +142,14 @@ mod tests {
     use super::{my_impl::my_parallel_execute, *};
     #[test]
     fn test_my_parallel_execute() {
-        let (txns, ledger) = generate_txns_and_ledger(5, 1_000_000, 1_000, 1, 1_000);
+        let (txns, ledger) = generate_txns_and_ledger(5, 1_000, 1_000_000, 1, 1_000);
         let s_output = sequential_execute(&txns, &ledger);
-        let mp_output = my_parallel_execute(&txns, &ledger, num_cpus::get());
-        let cloned = ledger.clone();
+        let c1 = ledger.clone();
+        let c2 = ledger.clone();
+        let mp_output = my_parallel_execute(txns, ledger, num_cpus::get());
         assert_eq!(
-            ledger.apply(Either::Left(s_output)),
-            cloned.apply(Either::Right(mp_output))
+            c1.apply(Either::Left(s_output)),
+            c2.apply(Either::Right(mp_output))
         )
     }
 }
