@@ -10,12 +10,11 @@ pub mod test_utils;
 mod types;
 
 use crate::core::{Transaction, VM};
-use executor::Executor;
+use executor::{Executor, DEG};
 use mvmemory::MVMemory;
 use once_cell::sync::Lazy;
 use scheduler::Scheduler;
 use std::{marker::PhantomData, sync::Arc};
-use types::AtomicUsize;
 
 static RAYON_EXEC_POOL: Lazy<rayon::ThreadPool> = Lazy::new(|| {
     rayon::ThreadPoolBuilder::new()
@@ -24,8 +23,6 @@ static RAYON_EXEC_POOL: Lazy<rayon::ThreadPool> = Lazy::new(|| {
         .build()
         .unwrap()
 });
-static ACTIVE_STEALING_WORKER: Lazy<AtomicUsize> = Lazy::new(|| AtomicUsize::new(0));
-static STEALING_WORKER_LIMIT: Lazy<usize> = Lazy::new(|| 1);
 /// parallel executor
 pub struct ParallelExecutor<T, V>
 where
@@ -62,7 +59,18 @@ where
         let txns_num = txns.len();
         let mvmemory = Arc::new(MVMemory::new(txns_num));
         let scheduler = Arc::new(Scheduler::new(txns_num));
-
+        let (deg, deg_handle) = DEG::new(self.concurrency_level);
+        {
+            let parameter = parameter.clone();
+            let txns = txns.clone();
+            let mvmemory = mvmemory.clone();
+            let scheduler = scheduler.clone();
+            let _ = std::thread::Builder::new()
+                .name("deg".to_string())
+                .spawn(move || {
+                    deg.run::<T, V>(parameter, txns, mvmemory, scheduler);
+                });
+        }
         RAYON_EXEC_POOL.scope(|s| {
             for _ in 0..self.concurrency_level {
                 s.spawn(|_| {
@@ -71,6 +79,7 @@ where
                         txns.clone(),
                         mvmemory.clone(),
                         scheduler.clone(),
+                        deg_handle.clone(),
                     );
                     executor.run();
                 });
@@ -94,6 +103,16 @@ where
         let txns_num = txns.len();
         let mvmemory = Arc::new(MVMemory::new(txns_num));
         let scheduler = Arc::new(Scheduler::new(txns_num));
+        let (deg, deg_handle) = DEG::new(self.concurrency_level);
+        {
+            let parameter = parameter.clone();
+            let txns = txns.clone();
+            let mvmemory = mvmemory.clone();
+            let scheduler = scheduler.clone();
+            let _ = std::thread::spawn(move || {
+                deg.run::<T, V>(parameter, txns, mvmemory, scheduler);
+            });
+        }
 
         let execute_start = Instant::now();
 
@@ -105,6 +124,7 @@ where
                         txns.clone(),
                         mvmemory.clone(),
                         scheduler.clone(),
+                        deg_handle.clone(),
                     );
                     executor.run();
                 });

@@ -60,6 +60,6 @@ pub trait VM: Sync + Sized {
     fn execute_transaction(
         &self,
         txn: &Self::T,
-        view: &MVMemoryView<Self::T, Self>,
+        view: &MVMemoryView<Self::T>,
     ) -> Result<Self::Output, Self::Error>;
 }

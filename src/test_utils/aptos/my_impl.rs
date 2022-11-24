@@ -43,22 +43,20 @@ impl Transaction for PreprocessedTransaction {
     type Value = WriteOp;
 }
 /// executor view
-pub struct ExecutorView<'a, S, V>
+pub struct ExecutorView<'a, S>
 where
     S: StateView + Send,
-    V: VM<T = PreprocessedTransaction>,
 {
     base_view: Arc<S>,
-    hashmap_view: &'a MVMemoryView<PreprocessedTransaction, V>,
+    hashmap_view: &'a MVMemoryView<PreprocessedTransaction>,
 }
-impl<'a, S, V> ExecutorView<'a, S, V>
+impl<'a, S> ExecutorView<'a, S>
 where
     S: StateView + Send,
-    V: VM<T = PreprocessedTransaction> + 'static,
 {
     pub fn new_view(
         base_view: Arc<S>,
-        hashmap_view: &'a MVMemoryView<PreprocessedTransaction, V>,
+        hashmap_view: &'a MVMemoryView<PreprocessedTransaction>,
     ) -> StorageAdapterOwned<Self> {
         Self {
             base_view,
@@ -67,10 +65,9 @@ where
         .into_move_resolver()
     }
 }
-impl<'a, S, V> StateView for ExecutorView<'a, S, V>
+impl<'a, S> StateView for ExecutorView<'a, S>
 where
     S: StateView + Send,
-    V: VM<T = PreprocessedTransaction> + 'static,
 {
     // read from hashmap or from storage
     fn get_state_value(&self, state_key: &StateKey) -> anyhow::Result<Option<Vec<u8>>> {
@@ -142,7 +139,7 @@ where
     fn execute_transaction(
         &self,
         txn: &Self::T,
-        view: &MVMemoryView<Self::T, Self>,
+        view: &MVMemoryView<Self::T>,
     ) -> Result<Self::Output, Self::Error> {
         #[cfg(feature = "trace_single_txn")]
         let start = std::time::Instant::now();
@@ -162,7 +159,7 @@ where
         };
 
         #[cfg(feature = "trace_single_txn")]
-        crate::rayon_trace!(
+        tracing::trace!(
             "<AptosVMWrapper as VM>::execute_transaction():{:?}",
             start.elapsed()
         );

@@ -13,8 +13,8 @@ fn log_benchmark_info(
 ) {
     #[cfg(feature = "bench_info")]
     {
-        block_stm::rayon_info!("{} (accs={},txns={},cpus={})", name, accs, txns, cpus);
-        block_stm::rayon_info!("{}", infos.mean());
+        tracing::info!("{} (accs={},txns={},cpus={})", name, accs, txns, cpus);
+        tracing::info!("{}", infos.mean());
         infos.clear_infos();
     }
 }

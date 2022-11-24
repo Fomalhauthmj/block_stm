@@ -52,7 +52,7 @@ impl VM for ParallelVM {
     fn execute_transaction(
         &self,
         txn: &Self::T,
-        view: &MVMemoryView<Self::T, Self>,
+        view: &MVMemoryView<Self::T>,
     ) -> Result<Self::Output, Self::Error> {
         let read = |k| match view.read(k) {
             ReadResult::Value(v) => Ok(*v),

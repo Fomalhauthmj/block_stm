@@ -14,7 +14,7 @@ mod tests {
         );
         let mut loop_cnt = 0;
         loop {
-            let (txns, ledger) = generate_txns_and_ledger(5, 10, 1_000_000, 1, 1_000);
+            let (txns, ledger) = generate_txns_and_ledger(5, 1_000, 1_000_000, 1, 1_000);
             let s_output = sequential_execute(&txns, &ledger);
             let c1 = ledger.clone();
             let c2 = ledger.clone();

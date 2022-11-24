@@ -1,12 +1,11 @@
 use std::{fmt::Debug, hash::Hash, sync::Arc};
 
 use crate::{
-    core::{Transaction, ValueBytes, VM},
-    executor::StealingExecutor,
+    core::{Transaction, ValueBytes},
+    executor::DEGHandle,
     scheduler::Scheduler,
     types::Mutex,
-    types::{AtomicBool, Incarnation, TxnIndex, Version},
-    ACTIVE_STEALING_WORKER, STEALING_WORKER_LIMIT,
+    types::{Incarnation, TxnIndex, Version},
 };
 use arc_swap::ArcSwapOption;
 use crossbeam::utils::CachePadded;
@@ -181,36 +180,31 @@ pub enum ReadResult<V> {
     NotFound,
 }
 /// mvmemory view,mvmemory used to read,scheduler used to add dependency
-pub struct MVMemoryView<T, V>
+pub struct MVMemoryView<T>
 where
     T: Transaction,
-    V: VM<T = T>,
 {
-    parameter: V::Parameter,
+    deg: DEGHandle,
     txn_idx: TxnIndex,
-    txns: Arc<Vec<T>>,
     mvmemory: Arc<MVMemory<T::Key, T::Value>>,
     scheduler: Arc<Scheduler>,
     /// Mutex used to be `Sync`
     captured_reads: Mutex<Vec<ReadDescriptor<T::Key>>>,
 }
 /// public methods used by executor
-impl<T, V> MVMemoryView<T, V>
+impl<T> MVMemoryView<T>
 where
     T: Transaction,
-    V: VM<T = T> + 'static,
 {
     pub fn new(
-        parameter: V::Parameter,
+        deg: DEGHandle,
         txn_idx: TxnIndex,
-        txns: Arc<Vec<T>>,
         mvmemory: Arc<MVMemory<T::Key, T::Value>>,
         scheduler: Arc<Scheduler>,
     ) -> Self {
         Self {
-            parameter,
+            deg,
             txn_idx,
-            txns,
             mvmemory,
             scheduler,
             captured_reads: Mutex::new(Vec::new()),
@@ -237,37 +231,9 @@ where
                         .wait_for_dependency(self.txn_idx, blocking_txn_idx)
                     {
                         Some(condvar) => {
-                            crate::rayon_trace!(
-                                "read deps({}->{})",
-                                blocking_txn_idx,
-                                self.txn_idx
-                            );
-                            let prev = ACTIVE_STEALING_WORKER.increment();
-                            if prev < *STEALING_WORKER_LIMIT {
-                                let flag = Arc::new(AtomicBool::new(false));
-
-                                let parameter = self.parameter.clone();
-                                let txns = self.txns.clone();
-                                let mvmemory = self.mvmemory.clone();
-                                let scheduler = self.scheduler.clone();
-
-                                let shared_flag = flag.clone();
-                                let _ = std::thread::Builder::new()
-                                    .name("stealing_worker".into())
-                                    .spawn(move || {
-                                        let stealing_executor = StealingExecutor::<T, V>::new(
-                                            parameter, txns, mvmemory, scheduler,
-                                        );
-                                        stealing_executor.stealing_run(shared_flag);
-                                    });
-                                crate::rayon_trace!("stealing worker has created,wait here");
-                                condvar.wait();
-                                flag.store(true);
-                            } else {
-                                ACTIVE_STEALING_WORKER.decrement();
-                                crate::rayon_error!("can't exceed stealing worker limit,wait here");
-                                condvar.wait();
-                            }
+                            self.deg.order();
+                            condvar.wait();
+                            self.deg.cancel();
                         }
                         None => continue,
                     }
