@@ -1,19 +1,15 @@
 use std::{
     collections::HashMap,
     ops::{Deref, DerefMut},
-    time::Instant,
 };
 
 use anyhow::anyhow;
 use either::Either;
 use rand::{distributions::Uniform, prelude::Distribution};
 
-mod aptos_impl;
-pub use aptos_impl::aptos_parallel_execute;
 mod my_impl;
 pub use my_impl::my_parallel_execute;
 
-use super::BenchmarkInfo;
 ///
 #[derive(Clone, Debug)]
 pub struct TransferTransaction {
@@ -110,9 +106,6 @@ impl SequentialVM {
         &self,
         txn: &TransferTransaction,
     ) -> anyhow::Result<TransferTransactionOutput> {
-        #[cfg(feature = "benchmark")]
-        std::thread::sleep(std::time::Duration::from_micros(100));
-
         let read = |k| match self.0.get(k) {
             Some(v) => Ok(*v),
             None => Err(anyhow!("value not found")),
@@ -134,41 +127,24 @@ impl SequentialVM {
 pub fn sequential_execute(
     txns: &[TransferTransaction],
     ledger: &Ledger,
-) -> (Vec<TransferTransactionOutput>, BenchmarkInfo) {
-    let total = Instant::now();
+) -> Vec<TransferTransactionOutput> {
     let mut vm = SequentialVM::new(ledger.clone());
-    let output = txns
-        .iter()
+    txns.iter()
         .map(|txn| {
             let output = vm.execute_transaction(txn).expect("execute error");
             vm.apply_output(output.clone());
             output
         })
-        .collect();
-    (
-        output,
-        BenchmarkInfo {
-            total_time: total.elapsed(),
-            execute_time: None,
-            collect_time: None,
-        },
-    )
+        .collect()
 }
 #[cfg(test)]
 mod tests {
-    use super::{aptos_impl::aptos_parallel_execute, my_impl::my_parallel_execute, *};
-    #[test]
-    fn test_aptos_parallel_execute() {
-        let (txns, ledger) = generate_txns_and_ledger(5, 1_000_000, 1_000, 1, 1_000);
-        let (s_output, _) = sequential_execute(&txns, &ledger);
-        let (ap_output, _) = aptos_parallel_execute(&txns, &ledger, num_cpus::get());
-        assert_eq!(s_output, ap_output);
-    }
+    use super::{my_impl::my_parallel_execute, *};
     #[test]
     fn test_my_parallel_execute() {
         let (txns, ledger) = generate_txns_and_ledger(5, 1_000_000, 1_000, 1, 1_000);
-        let (s_output, _) = sequential_execute(&txns, &ledger);
-        let (mp_output, _) = my_parallel_execute(&txns, &ledger, num_cpus::get());
+        let s_output = sequential_execute(&txns, &ledger);
+        let mp_output = my_parallel_execute(&txns, &ledger, num_cpus::get());
         let cloned = ledger.clone();
         assert_eq!(
             ledger.apply(Either::Left(s_output)),

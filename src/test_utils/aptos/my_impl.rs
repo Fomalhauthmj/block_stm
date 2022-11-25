@@ -132,9 +132,12 @@ where
         txn: &Self::T,
         view: &MVMemoryView<<Self::T as Transaction>::Key, <Self::T as Transaction>::Value>,
     ) -> Result<Self::Output, Self::Error> {
+        #[cfg(feature = "trace_single_txn")]
+        let start = std::time::Instant::now();
+
         let log_context = AdapterLogSchema::new(self.base_view.id(), view.txn_idx());
         let executor_view = ExecutorView::new_view(self.base_view, view);
-        match self
+        let result = match self
             .vm
             .execute_single_transaction(txn, &executor_view, &log_context)
         {
@@ -144,7 +147,15 @@ where
                 Ok(output)
             }
             Err(err) => Err(err),
-        }
+        };
+
+        #[cfg(feature = "trace_single_txn")]
+        crate::rayon_trace!(
+            "<AptosVMWrapper as VM>::execute_transaction():{:?}",
+            start.elapsed()
+        );
+
+        result
     }
 }
 /// parallel execute,without applying writeset,return execution duration

@@ -1,10 +1,11 @@
 use std::time::Duration;
 
 /// smart contract (move-based) transfer transaction
-#[cfg(feature = "aptos_transfer")]
+#[cfg(any(feature = "aptos_transfer", feature = "traced_aptos_transfer"))]
 pub mod aptos;
 // log utils
 mod log;
+pub use log::try_init_global_subscriber;
 /// simulated transfer transaction
 #[cfg(feature = "simulated_transfer")]
 pub mod simulated;

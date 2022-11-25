@@ -13,21 +13,10 @@ Currently,we generate random txns for each correctness test,and parallel execute
 Additionally,correctness test is a dead loop,which will test forever until test failure/blocking.
 
 # Benchmark
-use `cargo bench --features <testsuites>` to benchmark the performace (throughput) of sequential/parallel execute.
-
-## available testsuites
-
-1. --features simulated_transfer
-2. --features aptos_transfer
-
-
-**Note**:
-Currently,for `simulated_transfer` benchmark,we add
-`std::thread::sleep(std::time::Duration::from_micros(100))`
-before each execution of transaction to simulate smart contract execution.
+use `cargo bench --bench aptos` to benchmark the performace (throughput) of sequential/parallel execute.
 
 ## Profiling
-use `cargo bench --bench <bench> --features <testsuite> -- --profile-time <profile-time>` to profiling.
+use `cargo bench --bench aptos -- --profile-time <profile-time>` to profiling.
 
 # Limitations and Known Problems
 Sadly, our implement of block-stm currently doesn't support `DeltaOp` and any other features in `aptos-core`,which make the performace of this library exactly poor.

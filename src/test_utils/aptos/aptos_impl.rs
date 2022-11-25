@@ -5,7 +5,6 @@ use aptos_types::transaction::TransactionOutput;
 use aptos_vm::adapter_common::PreprocessedTransaction;
 
 use crate::test_utils::BenchmarkInfo;
-
 /// parallel executor from `aptos-core`
 pub fn aptos_parallel_execute(
     txns: &Vec<PreprocessedTransaction>,
@@ -14,7 +13,7 @@ pub fn aptos_parallel_execute(
 ) -> (Vec<TransactionOutput>, BenchmarkInfo) {
     let total = Instant::now();
     if let Ok((output, _, execute, collect)) =
-        aptos_vm::parallel_executor::ParallelAptosVM::execute_block_benchmark(
+        aptos_vm::parallel_executor::ParallelAptosVM::execute_block_benchmark::<FakeDataStore>(
             txns,
             state,
             concurrency_level,

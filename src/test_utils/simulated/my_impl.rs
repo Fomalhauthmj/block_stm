@@ -1,9 +1,6 @@
-use std::time::Instant;
-
 use crate::{
     core::{Transaction, TransactionOutput, ValueBytes, VM},
     mvmemory::ReadResult,
-    test_utils::BenchmarkInfo,
     ParallelExecutor,
 };
 
@@ -58,9 +55,6 @@ impl<'a> VM for ParallelVM<'a> {
             <Self::T as Transaction>::Value,
         >,
     ) -> Result<Self::Output, Self::Error> {
-        #[cfg(feature = "benchmark")]
-        std::thread::sleep(std::time::Duration::from_micros(100));
-
         let read = |k| match view.read(k) {
             ReadResult::Value(v) => Ok(*v),
             ReadResult::NotFound => Ok(*self.0.get(k).unwrap()),
@@ -83,16 +77,7 @@ pub fn my_parallel_execute(
     txns: &Vec<TransferTransaction>,
     ledger: &Ledger,
     concurrency_level: usize,
-) -> (Vec<(usize, Option<usize>)>, BenchmarkInfo) {
-    let total = Instant::now();
+) -> Vec<(usize, Option<usize>)> {
     let pe = ParallelExecutor::<TransferTransaction, ParallelVM>::new(concurrency_level);
-    let (output, execute, collect) = pe.execute_transactions_benchmark(txns, ledger);
-    (
-        output,
-        BenchmarkInfo {
-            total_time: total.elapsed(),
-            execute_time: Some(execute),
-            collect_time: Some(collect),
-        },
-    )
+    pe.execute_transactions(txns, ledger)
 }
