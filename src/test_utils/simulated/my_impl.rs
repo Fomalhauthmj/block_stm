@@ -1,11 +1,25 @@
 use crate::{
-    core::{Transaction, TransactionOutput, ValueBytes, VM},
+    core::{Mergeable, Transaction, TransactionOutput, ValueBytes, VM},
     mvmemory::ReadResult,
     ParallelExecutor,
 };
 
 use super::{Ledger, TransferTransaction, TransferTransactionOutput};
+impl Mergeable for usize {
+    type DeltaOp = ();
 
+    fn partial_mergeable() -> bool {
+        false
+    }
+
+    fn partial_merge(_left: &Self::DeltaOp, _right: &Self::DeltaOp) -> Self::DeltaOp {
+        unreachable!()
+    }
+
+    fn apply_delta(&self, _delta: &Self::DeltaOp) -> Self {
+        unreachable!()
+    }
+}
 impl Transaction for TransferTransaction {
     type Key = usize;
 
@@ -31,6 +45,15 @@ impl TransactionOutput for TransferTransactionOutput {
         <Self::T as Transaction>::Value,
     )> {
         self.0.clone()
+    }
+
+    fn get_delta_set(
+        &self,
+    ) -> Vec<(
+        <Self::T as Transaction>::Key,
+        <<Self::T as Transaction>::Value as Mergeable>::DeltaOp,
+    )> {
+        vec![]
     }
 }
 struct ParallelVM<'a>(&'a Ledger);
@@ -58,6 +81,7 @@ impl<'a> VM for ParallelVM<'a> {
         let read = |k| match view.read(k) {
             ReadResult::Value(v) => Ok(*v),
             ReadResult::NotFound => Ok(*self.0.get(k).unwrap()),
+            _ => unreachable!(),
         };
         let from_balance = read(&txn.from)?;
         let output = if from_balance >= txn.money {
@@ -77,7 +101,8 @@ pub fn my_parallel_execute(
     txns: &Vec<TransferTransaction>,
     ledger: &Ledger,
     concurrency_level: usize,
-) -> Vec<(usize, Option<usize>)> {
+) -> Vec<TransferTransactionOutput> {
     let pe = ParallelExecutor::<TransferTransaction, ParallelVM>::new(concurrency_level);
-    pe.execute_transactions(txns, ledger)
+    let (outputs, _) = pe.execute_transactions(txns, ledger);
+    outputs
 }

@@ -145,10 +145,6 @@ mod tests {
         let (txns, ledger) = generate_txns_and_ledger(5, 1_000_000, 1_000, 1, 1_000);
         let s_output = sequential_execute(&txns, &ledger);
         let mp_output = my_parallel_execute(&txns, &ledger, num_cpus::get());
-        let cloned = ledger.clone();
-        assert_eq!(
-            ledger.apply(Either::Left(s_output)),
-            cloned.apply(Either::Right(mp_output))
-        )
+        assert_eq!(s_output, mp_output);
     }
 }

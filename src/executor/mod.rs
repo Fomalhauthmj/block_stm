@@ -1,6 +1,6 @@
 use crate::{
     core::{Transaction, TransactionOutput, VM},
-    mvmemory::{MVMemory, MVMemoryView},
+    mvmemory::{LastTxnIO, MVMemory, MVMemoryView},
     scheduler::{Scheduler, SchedulerTask, TaskGuard},
     types::Version,
 };
@@ -14,6 +14,7 @@ where
     txns: &'a [T],
     mvmemory: &'a MVMemory<T::Key, T::Value>,
     scheduler: &'a Scheduler,
+    last_txn_io: &'a LastTxnIO<T::Key, T::Value, V::Output>,
 }
 /// public methods used by parallel executor
 impl<'a, T, V> Executor<'a, T, V>
@@ -26,6 +27,7 @@ where
         txns: &'a [T],
         mvmemory: &'a MVMemory<T::Key, T::Value>,
         scheduler: &'a Scheduler,
+        last_txn_io: &'a LastTxnIO<T::Key, T::Value, V::Output>,
     ) -> Self {
         let vm = V::new(parameter);
         Self {
@@ -33,6 +35,7 @@ where
             txns,
             mvmemory,
             scheduler,
+            last_txn_io,
         }
     }
     pub fn run(&self) {
@@ -63,11 +66,15 @@ where
         let mut mvmeory_view = MVMemoryView::new(txn_idx, self.mvmemory, self.scheduler);
         match self.vm.execute_transaction(txn, &mvmeory_view) {
             Ok(output) => {
-                let wrote_new_location = self.mvmemory.record(
+                let last_write_set = self.last_txn_io.load_write_set(txn_idx);
+                let wrote_new_location = self.mvmemory.apply(
                     version,
-                    mvmeory_view.take_read_set(),
+                    last_write_set,
                     output.get_write_set(),
+                    output.get_delta_set(),
                 );
+                self.last_txn_io
+                    .record(txn_idx, mvmeory_view.take_read_set(), output);
                 self.scheduler
                     .finish_execution(txn_idx, incarnation, wrote_new_location, guard)
             }
@@ -79,10 +86,21 @@ where
     }
     fn try_validate<'b>(&self, version: Version, guard: TaskGuard<'b>) -> SchedulerTask<'b> {
         let (txn_idx, incarnation) = version;
-        let read_set_valid = self.mvmemory.validate_read_set(txn_idx);
+
+        let read_set_valid = {
+            let read_set = self.last_txn_io.load_read_set(txn_idx);
+            if let Some(read_set) = read_set {
+                self.mvmemory.validate_read_set(txn_idx, &read_set)
+            } else {
+                true
+            }
+        };
+
         let aborted = !read_set_valid && self.scheduler.abort(txn_idx, incarnation);
         if aborted {
-            self.mvmemory.convert_writes_to_estimates(txn_idx);
+            let write_set = self.last_txn_io.load_write_set(txn_idx);
+            self.mvmemory
+                .convert_writes_to_estimates(txn_idx, &write_set);
         }
         self.scheduler.finish_validation(txn_idx, aborted, guard)
     }

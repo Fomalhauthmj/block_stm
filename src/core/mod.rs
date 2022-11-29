@@ -8,6 +8,17 @@ pub trait ValueBytes {
     /// deserialize `Vec<u8>` to `Self`
     fn deserialize(bytes: &[u8]) -> Self;
 }
+/// trait used to support deltaop
+pub trait Mergeable: Eq {
+    /// deltaop
+    type DeltaOp: Send + Sync + Copy + Eq;
+    ///
+    fn partial_mergeable() -> bool;
+    ///
+    fn partial_merge(left: &Self::DeltaOp, right: &Self::DeltaOp) -> Self::DeltaOp;
+    ///
+    fn apply_delta(&self, delta: &Self::DeltaOp) -> Self;
+}
 /// transaction type
 ///
 /// `Sync` needed by rayon
@@ -20,18 +31,18 @@ pub trait Transaction: Sync {
     ///
     /// `Send + Sync` needed by rayon
     ///
-    type Key: Eq + Hash + Clone + Send + Sync + Debug;
+    type Key: Eq + Hash + Send + Sync + Clone + Debug;
     /// memory value type read/written by transaction
     ///
     /// `Send + Sync` needed by rayon
     ///
     /// `ValueBytes` needed by mvmemory snapshot
     ///
-    type Value: Send + Sync + ValueBytes + Debug;
+    type Value: Eq + Send + Sync + ValueBytes + Mergeable + Debug;
 }
 /// transaction output,which used to get transaction's write set
 #[allow(clippy::type_complexity)]
-pub trait TransactionOutput {
+pub trait TransactionOutput: Sync + Send {
     /// transaction type
     type T: Transaction;
     /// get write set of transaction
@@ -40,6 +51,13 @@ pub trait TransactionOutput {
     ) -> Vec<(
         <Self::T as Transaction>::Key,
         <Self::T as Transaction>::Value,
+    )>;
+    ///
+    fn get_delta_set(
+        &self,
+    ) -> Vec<(
+        <Self::T as Transaction>::Key,
+        <<Self::T as Transaction>::Value as Mergeable>::DeltaOp,
     )>;
 }
 /// execution engine

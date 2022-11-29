@@ -19,15 +19,15 @@ rand = "0.8.5"
 crossbeam = "0.8.2"
 arc-swap = "1.5.1"
 anyhow = "1.0.65"
-aptos_e2e_tests = { package = "language-e2e-tests", git = "https://github.com/Fomalhauthmj/aptos-core", rev = "9ae3bf36cd", optional = true }
-aptos_vm = { package = "aptos-vm", git = "https://github.com/Fomalhauthmj/aptos-core", rev = "9ae3bf36cd", optional = true }
-aptos_types = { package = "aptos-types", git = "https://github.com/Fomalhauthmj/aptos-core", rev = "9ae3bf36cd", optional = true }
-aptos_move_deps = { package = "move-deps", git = "https://github.com/Fomalhauthmj/aptos-core", rev = "9ae3bf36cd", optional = true }
-aptos_state_view = { package = "aptos-state-view", git = "https://github.com/Fomalhauthmj/aptos-core", rev = "9ae3bf36cd", optional = true }
-aptos_aggregator = { package = "aptos-aggregator", git = "https://github.com/Fomalhauthmj/aptos-core", rev = "9ae3bf36cd", optional = true }
-aptos_bitvec = { package = "aptos-bitvec", git = "https://github.com/Fomalhauthmj/aptos-core", rev = "9ae3bf36cd", optional = true }
-aptos_crypto = { package = "aptos-crypto", git = "https://github.com/Fomalhauthmj/aptos-core", rev = "9ae3bf36cd", optional = true }
-aptos_parallel_executor = { package = "aptos-parallel-executor", git = "https://github.com/Fomalhauthmj/aptos-core", rev = "9ae3bf36cd", optional = true }
+aptos_e2e_tests = { package = "language-e2e-tests", git = "https://github.com/Fomalhauthmj/aptos-core", rev = "70b0378a2c", optional = true }
+aptos_vm = { package = "aptos-vm", git = "https://github.com/Fomalhauthmj/aptos-core", rev = "70b0378a2c", optional = true }
+aptos_types = { package = "aptos-types", git = "https://github.com/Fomalhauthmj/aptos-core", rev = "70b0378a2c", optional = true }
+aptos_move_deps = { package = "move-deps", git = "https://github.com/Fomalhauthmj/aptos-core", rev = "70b0378a2c", optional = true }
+aptos_state_view = { package = "aptos-state-view", git = "https://github.com/Fomalhauthmj/aptos-core", rev = "70b0378a2c", optional = true }
+aptos_aggregator = { package = "aptos-aggregator", git = "https://github.com/Fomalhauthmj/aptos-core", rev = "70b0378a2c", optional = true }
+aptos_bitvec = { package = "aptos-bitvec", git = "https://github.com/Fomalhauthmj/aptos-core", rev = "70b0378a2c", optional = true }
+aptos_crypto = { package = "aptos-crypto", git = "https://github.com/Fomalhauthmj/aptos-core", rev = "70b0378a2c", optional = true }
+aptos_parallel_executor = { package = "aptos-parallel-executor", git = "https://github.com/Fomalhauthmj/aptos-core", rev = "70b0378a2c", optional = true }
 proptest = "1.0.0"
 either = "1.8.0"
 pprof = { version = "0.11.0", features = ["flamegraph", "criterion"] }

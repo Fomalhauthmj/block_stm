@@ -154,7 +154,7 @@ mod tests {
 
     #[test]
     fn test_aptos_parallel_execute() {
-        let (txns, state) = generate_txns_and_state(1_000, 10_000);
+        let (txns, state) = generate_txns_and_state(5, 1_000);
         let (s_output, _) = sequential_execute(&txns, &state);
         let (ap_output, _) = aptos_parallel_execute(&txns, &state, num_cpus::get());
         assert_eq!(s_output, ap_output);
@@ -164,10 +164,6 @@ mod tests {
         let (txns, state) = generate_txns_and_state(5, 1_000);
         let (s_output, _) = sequential_execute(&txns, &state);
         let (mp_output, _) = my_parallel_execute(&txns, &state, num_cpus::get());
-        let cloned = state.clone();
-        assert_eq!(
-            apply(state, Either::Left(s_output)),
-            apply(cloned, Either::Right(mp_output))
-        );
+        assert_eq!(s_output, mp_output);
     }
 }

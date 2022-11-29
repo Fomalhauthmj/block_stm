@@ -11,7 +11,7 @@ mod types;
 
 use crate::core::{Transaction, VM};
 use executor::Executor;
-use mvmemory::MVMemory;
+use mvmemory::{LastTxnIO, MVMemory};
 use once_cell::sync::Lazy;
 use scheduler::Scheduler;
 use std::marker::PhantomData;
@@ -54,20 +54,30 @@ where
         &self,
         txns: &Vec<T>,
         parameter: V::Parameter,
-    ) -> Vec<(T::Key, Option<T::Value>)> {
+    ) -> (Vec<V::Output>, MVMemory<T::Key, T::Value>) {
         let txns_num = txns.len();
         let mvmemory = MVMemory::new(txns_num);
         let scheduler = Scheduler::new(txns_num);
+        let last_txn_io = LastTxnIO::<T::Key, T::Value, V::Output>::new(txns_num);
         RAYON_EXEC_POOL.scope(|s| {
             for _ in 0..self.concurrency_level {
                 s.spawn(|_| {
-                    let executor =
-                        Executor::<T, V>::new(parameter.clone(), txns, &mvmemory, &scheduler);
+                    let executor = Executor::<T, V>::new(
+                        parameter.clone(),
+                        txns,
+                        &mvmemory,
+                        &scheduler,
+                        &last_txn_io,
+                    );
                     executor.run();
                 });
             }
         });
-        mvmemory.snapshot()
+        let mut result = Vec::with_capacity(txns_num);
+        for idx in 0..txns_num {
+            result.push(last_txn_io.take_output(idx));
+        }
+        (result, mvmemory)
     }
     /// execute transactions for benchmark
     pub fn execute_transactions_benchmark(
@@ -75,7 +85,8 @@ where
         txns: &Vec<T>,
         parameter: V::Parameter,
     ) -> (
-        Vec<(T::Key, Option<T::Value>)>,
+        Vec<V::Output>,
+        MVMemory<T::Key, T::Value>,
         std::time::Duration,
         std::time::Duration,
     ) {
@@ -83,14 +94,20 @@ where
         let txns_num = txns.len();
         let mvmemory = MVMemory::new(txns_num);
         let scheduler = Scheduler::new(txns_num);
+        let last_txn_io = LastTxnIO::<T::Key, T::Value, V::Output>::new(txns_num);
 
         let execute_start = Instant::now();
 
         RAYON_EXEC_POOL.scope(|s| {
             for _ in 0..self.concurrency_level {
                 s.spawn(|_| {
-                    let executor =
-                        Executor::<T, V>::new(parameter.clone(), txns, &mvmemory, &scheduler);
+                    let executor = Executor::<T, V>::new(
+                        parameter.clone(),
+                        txns,
+                        &mvmemory,
+                        &scheduler,
+                        &last_txn_io,
+                    );
                     executor.run();
                 });
             }
@@ -100,9 +117,12 @@ where
 
         let collect_start = Instant::now();
 
-        let result = mvmemory.snapshot();
+        let mut result = Vec::with_capacity(txns_num);
+        for idx in 0..txns_num {
+            result.push(last_txn_io.take_output(idx));
+        }
 
         let collect_end = collect_start.elapsed();
-        (result, execute_end, collect_end)
+        (result, mvmemory, execute_end, collect_end)
     }
 }
