@@ -1,0 +1,55 @@
+[package]
+name = "test-utils"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+
+anyhow = { workspace = true }
+rand = { workspace = true }
+rayon = { workspace = true }
+block-stm = { workspace = true }
+tracing = { workspace = true }
+once_cell = { workspace = true }
+tracing-appender = "0.2.2"
+tracing-subscriber = "0.3.16"
+
+# aptos deps
+aptos-aggregator = { package = "aptos-aggregator", path = "../../deps/aptos-core/aptos-move/aptos-aggregator", optional = true }
+aptos-language-e2e-tests = { package = "aptos-language-e2e-tests", path = "../../deps/aptos-core/aptos-move/e2e-tests", optional = true }
+aptos-types = { package = "aptos-types", path = "../../deps/aptos-core/types", optional = true }
+aptos-state-view = { package = "aptos-state-view", path = "../../deps/aptos-core/storage/state-view", optional = true }
+aptos-vm = { package = "aptos-vm", path = "../../deps/aptos-core/aptos-move/aptos-vm", optional = true }
+aptos-block-executor = { package = "aptos-block-executor", path = "../../deps/aptos-core/aptos-move/block-executor", optional = true }
+aptos-crypto = { package = "aptos-crypto", path = "../../deps/aptos-core/crates/aptos-crypto", optional = true }
+aptos-cached-packages = { package = "aptos-cached-packages", path = "../../deps/aptos-core/aptos-move/framework/cached-packages", optional = true }
+move-core-types = { git = "https://github.com/move-language/move", rev = "bd25b900ccb4da6d1ece214595cb992e5be7c471", features = [
+    "address32",
+], optional = true }
+move-binary-format = { git = "https://github.com/move-language/move", rev = "bd25b900ccb4da6d1ece214595cb992e5be7c471", optional = true }
+bcs = { git = "https://github.com/aptos-labs/bcs.git", rev = "d31fab9d81748e2594be5cd5cdf845786a30562d", optional = true }
+
+[dev-dependencies]
+
+num_cpus = { workspace = true }
+indicatif = "0.17.2"
+
+[features]
+
+aptos = [
+    "aptos-aggregator",
+    "aptos-language-e2e-tests",
+    "aptos-types",
+    "aptos-state-view",
+    "aptos-vm",
+    "aptos-block-executor",
+    "aptos-crypto",
+    "aptos-cached-packages",
+    "move-core-types",
+    "move-binary-format",
+    "bcs",
+]
+
+tracing = ["block-stm/tracing"]

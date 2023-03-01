@@ -1,5 +1,3 @@
 **/target
 **/logs
 Cargo.lock
-aptos_core.local
-aptos_core.remote
