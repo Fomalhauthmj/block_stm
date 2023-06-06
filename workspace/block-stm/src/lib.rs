@@ -9,7 +9,7 @@ pub use mvmemory::{EntryCell, MVMapView, ReadResult};
 mod scheduler;
 mod types;
 
-use executor::{deg::DEG, last_txn_io::LastTxnsIO, Executor};
+use executor::{last_txn_io::LastTxnsIO, Executor};
 use mvmemory::MVMap;
 use once_cell::sync::Lazy;
 use scheduler::Scheduler;
@@ -60,19 +60,7 @@ where
         let mvmemory = Arc::new(MVMap::new());
         let scheduler = Arc::new(Scheduler::new(txns_num));
         let last_txn_io = Arc::new(LastTxnsIO::<T::Key, T::Value, V::Output>::new(txns_num));
-        let (deg, deg_handle) = DEG::new(self.concurrency_level);
-        {
-            let parameter = parameter.clone();
-            let txns = txns.clone();
-            let mvmemory = mvmemory.clone();
-            let scheduler = scheduler.clone();
-            let last_txn_io = last_txn_io.clone();
-            let _ = std::thread::Builder::new()
-                .name("deg".to_string())
-                .spawn(move || {
-                    //deg.run::<T, V>(parameter, txns, last_txn_io, mvmemory, scheduler);
-                });
-        }
+
         RAYON_EXEC_POOL.scope(|s| {
             for _ in 0..self.concurrency_level {
                 s.spawn(|_| {
@@ -82,7 +70,6 @@ where
                         last_txn_io.clone(),
                         mvmemory.clone(),
                         scheduler.clone(),
-                        deg_handle.clone(),
                     );
                     executor.run();
                 });

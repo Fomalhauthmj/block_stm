@@ -6,12 +6,11 @@ use crate::{
     core::{Transaction, TransactionOutput, VM},
     mvmemory::{MVMap, MVMapView},
     scheduler::{Scheduler, SchedulerTask, TaskGuard},
-    types::{AtomicBool, Version},
+    types::Version,
 };
 
-use self::{deg::DEGHandle, last_txn_io::LastTxnsIO};
+use self::last_txn_io::LastTxnsIO;
 
-pub(crate) mod deg;
 pub(crate) mod last_txn_io;
 /// executor
 pub(crate) struct Executor<T, V>
@@ -23,8 +22,6 @@ where
     last_txn_io: Arc<LastTxnsIO<T::Key, T::Value, V::Output>>,
     mvmemory: Arc<MVMap<T::Key, T::Value>>,
     scheduler: Arc<Scheduler>,
-
-    deg: DEGHandle,
     vm: V,
 }
 /// public methods used by parallel executor
@@ -39,7 +36,6 @@ where
         last_txn_io: Arc<LastTxnsIO<T::Key, T::Value, V::Output>>,
         mvmemory: Arc<MVMap<T::Key, T::Value>>,
         scheduler: Arc<Scheduler>,
-        deg: DEGHandle,
     ) -> Self {
         let vm = V::new(parameter);
         Self {
@@ -47,7 +43,6 @@ where
             last_txn_io,
             mvmemory,
             scheduler,
-            deg,
             vm,
         }
     }
@@ -66,26 +61,6 @@ where
             }
         }
     }
-    pub fn run_with_flag(&self, flag: Arc<AtomicBool>) {
-        let mut task = SchedulerTask::NoTask;
-        loop {
-            task = match task {
-                SchedulerTask::Execution(version, None, guard) => self.try_execute(version, guard),
-                SchedulerTask::Execution(_, Some(condvar), _) => {
-                    condvar.notify_one();
-                    SchedulerTask::NoTask
-                }
-                SchedulerTask::Validation(version, guard) => self.try_validate(version, guard),
-                SchedulerTask::NoTask => {
-                    if flag.load() {
-                        break;
-                    }
-                    self.scheduler.next_task()
-                }
-                SchedulerTask::Done => break,
-            }
-        }
-    }
 }
 /// private methods used by executor itself
 impl<T, V> Executor<T, V>
@@ -100,12 +75,8 @@ where
 
         let (txn_idx, incarnation) = version;
         let txn = &self.txns[txn_idx];
-        let mut mvmeory_view = MVMapView::new(
-            txn_idx,
-            self.mvmemory.clone(),
-            self.scheduler.clone(),
-            self.deg.clone(),
-        );
+        let mut mvmeory_view =
+            MVMapView::new(txn_idx, self.mvmemory.clone(), self.scheduler.clone());
         match self.vm.execute_transaction(txn, &mvmeory_view) {
             Ok(output) => {
                 let last_write_set = self.last_txn_io.last_modified_keys(txn_idx);

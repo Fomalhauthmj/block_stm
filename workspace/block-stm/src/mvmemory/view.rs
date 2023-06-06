@@ -2,7 +2,6 @@ use std::{hash::Hash, sync::Arc};
 
 use crate::{
     core::Mergeable,
-    executor::deg::DEGHandle,
     scheduler::Scheduler,
     types::{Mutex, TxnIndex, Version},
 };
@@ -107,7 +106,6 @@ where
     txn_idx: TxnIndex,
     mvmap: Arc<MVMap<Key, Value>>,
     scheduler: Arc<Scheduler>,
-    deg: DEGHandle,
     /// Mutex used to be `Sync`
     captured_reads: Mutex<ReadSet<Key, Value>>,
 }
@@ -121,13 +119,11 @@ where
         txn_idx: TxnIndex,
         mvmap: Arc<MVMap<Key, Value>>,
         scheduler: Arc<Scheduler>,
-        deg: DEGHandle,
     ) -> Self {
         Self {
             txn_idx,
             mvmap,
             scheduler,
-            deg,
             captured_reads: Mutex::new(Vec::new()),
         }
     }

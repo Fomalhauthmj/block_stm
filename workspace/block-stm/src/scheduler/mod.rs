@@ -1,3 +1,5 @@
+use crossbeam::utils::CachePadded;
+
 use crate::types::{AtomicBool, AtomicUsize, Condvar, Incarnation, Mutex, TxnIndex, Version};
 use std::{cmp::min, hint, sync::atomic::Ordering};
 /// scheduler
@@ -8,8 +10,8 @@ pub struct Scheduler {
     num_active_tasks: AtomicUsize,
     decrease_cnt: AtomicUsize,
     done_marker: AtomicBool,
-    txn_dependency: Vec<Mutex<Vec<TxnIndex>>>,
-    txn_status: Vec<Mutex<TransactionStatus>>,
+    txn_dependency: Vec<CachePadded<Mutex<Vec<TxnIndex>>>>,
+    txn_status: Vec<CachePadded<Mutex<TransactionStatus>>>,
 }
 /// public methods used by other components
 impl Scheduler {
@@ -21,9 +23,11 @@ impl Scheduler {
             num_active_tasks: AtomicUsize::new(0),
             decrease_cnt: AtomicUsize::new(0),
             done_marker: AtomicBool::new(false),
-            txn_dependency: (0..block_size).map(|_| Mutex::new(vec![])).collect(),
+            txn_dependency: (0..block_size)
+                .map(|_| CachePadded::new(Mutex::new(vec![])))
+                .collect(),
             txn_status: (0..block_size)
-                .map(|_| Mutex::new(TransactionStatus::ReadyToExecute(0, None)))
+                .map(|_| CachePadded::new(Mutex::new(TransactionStatus::ReadyToExecute(0, None))))
                 .collect(),
         }
     }
